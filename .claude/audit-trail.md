@@ -245,3 +245,11 @@
 - [ ] Confirm exact GHRCE antenna coordinates before physical pilot deployment.
 - [ ] Replace the current root-level MinIO application credential with a least-privilege service principal before shared-network deployment.
 **Mr Fox's Note to Abheejit**: This is the first real Aries layer, not a renamed MissionOps demo. The system now preserves evidence strongly enough to support benchmark workloads next, while remaining honest about what is fixture-backed, live, estimated, and still external.
+
+### Milestone 2 Resolution — SUPERSEDED
+**Date**: 2026-08-15
+**Resolved by**: Mr Fox (Abheejit's instruction: "resolve m2")
+**Disposition**: SUPERSEDED by Milestone 3, not COMPLETED.
+**Rationale**: M2's sole remaining blocker was the absence of a git remote to run its mandatory GitHub Actions CI workflow — everything else (Docker packaging, config validation, SQLite WAL durability, health endpoints, scheduler lifecycle, backup/restore) passed locally. Before that blocker was cleared, Milestone 3 replaced the SQLite runtime M2 hardened with a PostgreSQL/MinIO architecture. Re-running M2's specific SQLite-era CI checks against code that no longer exists would be theater, not evidence — M3's own 49-test suite and 7-agent audit (Security PASS, Architecture SOUND, Engineering CLEAN, DevOps SHIP_READY) is the current, superseding evidence of production-readiness for the live architecture.
+**What carried forward**: Docker/Compose packaging pattern, non-root/read-only container posture, config-validation discipline, operator README structure, and the backup/restore expectation all persisted into M3's implementation rather than being redone from scratch.
+**Action taken this session**: git remote configured (`iabheejit/aries-space`, private) — CI can now run remotely against the current (M3) codebase going forward; this resolves the *mechanism* M2 was blocked on even though M2 itself is not being retroactively completed.
