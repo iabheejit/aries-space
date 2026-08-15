@@ -1,27 +1,8 @@
-import importlib
+import os
 
-import pytest
-from fastapi.testclient import TestClient
-
-
-@pytest.fixture
-def app_client(tmp_path, monkeypatch):
-    """Fresh FastAPI app + isolated SQLite DB per test, scheduler disabled
-    (tests drive ingestion/prediction explicitly, not on a timer).
-    """
-    db_path = tmp_path / "test_missionops.db"
-    monkeypatch.setenv("DB_PATH", str(db_path))
-
-    import app.config as config_module
-    import app.db as db_module
-    import app.main as main_module
-
-    importlib.reload(config_module)
-    importlib.reload(db_module)
-    importlib.reload(main_module)
-
-    monkeypatch.setattr(main_module, "start_scheduler", lambda: None)
-    monkeypatch.setattr(main_module, "stop_scheduler", lambda: None)
-
-    with TestClient(main_module.app) as client:
-        yield client, main_module, db_module
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+psycopg://aries:test-password@127.0.0.1:5432/aries"
+)
+os.environ.setdefault("MINIO_ACCESS_KEY", "aries-test")
+os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-password")
+os.environ.setdefault("API_BEARER_TOKEN", "test-api-bearer-token")

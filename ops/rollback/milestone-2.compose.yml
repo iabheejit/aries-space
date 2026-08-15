@@ -1,0 +1,34 @@
+services:
+  app:
+    image: aries-missionops:m2-rollback
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    environment:
+      NORAD_ID: "${NORAD_ID:-68635}"
+      SATELLITE_NAME: "${SATELLITE_NAME:-CANVAS}"
+      STATION_NAME: "${STATION_NAME:-GHRCE (approx.)}"
+      STATION_LAT: "${STATION_LAT:-21.1237}"
+      STATION_LON: "${STATION_LON:-79.0353}"
+      STATION_ELEV_M: "${STATION_ELEV_M:-310}"
+      TLE_REFRESH_HOURS: "${TLE_REFRESH_HOURS:-12}"
+      OBS_POLL_MINUTES: "${OBS_POLL_MINUTES:-10}"
+      SQLITE_BUSY_TIMEOUT_MS: "${SQLITE_BUSY_TIMEOUT_MS:-5000}"
+      SCHEDULER_ENABLED: "${SCHEDULER_ENABLED:-true}"
+      DB_PATH: /data/missionops.db
+    volumes:
+      - missionops-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+volumes:
+  missionops-data:
+    external: true
+    name: aries-space_missionops-data

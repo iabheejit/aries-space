@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from app import tle as tle_module
-from app.predict import compute_passes
-from app.tle import TLERecord, TLEUnavailableError, get_tle
+from services.api.aries_api import tle as tle_module
+from services.api.aries_api.predict import compute_passes
+from services.api.aries_api.tle import TLERecord, TLEUnavailableError, get_tle
 
 # ISS TLE, fixed epoch — deterministic fixture, not a live fetch.
 ISS_LINE1 = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9994"
@@ -26,7 +26,7 @@ def iss_tle():
 
 def test_compute_passes_returns_ordered_nonoverlapping_passes(iss_tle):
     passes = compute_passes(
-        iss_tle, lat=21.1237, lon=79.0353, elev_m=310, count=5, search_hours=72
+        iss_tle, lat=21.1052484, lon=79.0034903, elev_m=310, count=5, search_hours=72
     )
 
     assert 1 <= len(passes) <= 5
@@ -41,7 +41,7 @@ def test_compute_passes_returns_ordered_nonoverlapping_passes(iss_tle):
 
 
 def test_compute_passes_respects_count(iss_tle):
-    passes = compute_passes(iss_tle, lat=21.1237, lon=79.0353, elev_m=310, count=2)
+    passes = compute_passes(iss_tle, lat=21.1052484, lon=79.0034903, elev_m=310, count=2)
     assert len(passes) <= 2
 
 

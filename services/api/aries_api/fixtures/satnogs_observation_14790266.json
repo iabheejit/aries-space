@@ -1,0 +1,13 @@
+{
+  "id": 14790266,
+  "start": "2026-08-15T01:41:38Z",
+  "end": "2026-08-15T01:52:11Z",
+  "norad_cat_id": 68635,
+  "ground_station": 2545,
+  "status": "good",
+  "vetted_status": "good",
+  "observation_frequency": 437250000,
+  "waterfall": "https://network.satnogs.org/media/observations/14790266/waterfall.png",
+  "payload": "https://network.satnogs.org/media/observations/14790266/audio.ogg",
+  "demoddata": []
+}

@@ -1,6 +1,6 @@
 from datetime import timezone
 
-from app.normalize import normalize_observation
+from services.api.aries_api.normalize import normalize_observation
 
 FULL_RAW_OBSERVATION = {
     "id": 14790352,

@@ -22,7 +22,8 @@ GHRCE (G H Raisoni College of Engineering, Nagpur) has no station currently regi
 - GHRCE's exact station coordinates are unconfirmed (see above) — currently a documented placeholder.
 - No multi-day soak test yet — the scheduler has been exercised for minutes, not the days/weeks a real pilot would run continuously; long-running stability (memory growth, SQLite file growth, scheduler drift) is unverified.
 - Signal quality is surfaced as SatNOGS's own `vetted_status` (good/bad/failed/unknown) — this is community-vetted, not a first-party signal metric; acceptable per spec ("if available"), but worth noting it's not something this prototype computes itself.
-- No automated CI pipeline runs the test suite yet — tests are run manually (`pytest`); fine for prototype stage, called out for DevOps follow-up.
+- A Python 3.11/3.13 CI pipeline and mandatory container runtime/persistence/restore checks are now defined, but the first CI run is pending because this checkout has no Git remote. The full 38-test suite passes locally.
+- The hardened single-worker process passed a second isolated live validation on 2026-08-15 with 25 observations, fresh Celestrak TLE data, health checks, one computed pass, and dashboard rendering. Docker runtime, persistence, and backup/restore proofs now pass locally; remote CI remains pending because no Git remote is configured.
 - Explicitly out of scope per the milestone plan (unchanged): live RF/SDR reception, multi-station orchestration, anomaly detection, auth, and production hardening.
 
 ## How to reproduce

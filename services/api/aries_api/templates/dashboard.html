@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MissionOps Lite</title>
+  <style>
+    :root { --ink:#17212b; --muted:#66737f; --line:#d8e0e5; --paper:#f4f7f8; --surface:#fff; --navy:#102a3a; --cyan:#12a8b5; --green:#16845b; --amber:#a85f10; }
+    * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--paper); font-family:"Avenir Next",Avenir,sans-serif; letter-spacing:0; }
+    header { color:#f6fbfc; background:var(--navy); border-bottom:4px solid var(--cyan); } .inner,main { width:min(1380px,calc(100% - 48px)); margin:auto; }
+    .inner { min-height:132px; display:flex; align-items:center; justify-content:space-between; gap:32px; padding:24px 0; } h1 { margin:3px 0; font-size:2.6rem; }
+    .kicker,th,.label { font:700 .72rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; } .kicker { color:var(--cyan); } .subtitle,.source { color:var(--muted); font-size:.8rem; }
+    header .subtitle { color:#b9cbd3; } main { padding:34px 0 52px; } section { margin-bottom:38px; } .section-head { display:flex; justify-content:space-between; align-items:end; border-bottom:2px solid var(--ink); padding-bottom:11px; margin-bottom:13px; }
+    h2 { margin:2px 0; font-size:1.2rem; } .health { display:grid; grid-template-columns:1fr 1fr 2fr; border:1px solid var(--line); background:var(--surface); border-radius:6px; overflow:hidden; }
+    .stat { padding:20px 22px; border-right:1px solid var(--line); } .value { margin-top:7px; font:700 1.35rem "SFMono-Regular",Consolas,monospace; overflow-wrap:anywhere; }
+    .table-wrap { overflow:auto; border:1px solid var(--line); background:var(--surface); border-radius:6px; } table { width:100%; min-width:720px; border-collapse:collapse; } th,td { padding:13px 16px; text-align:left; border-bottom:1px solid #e7ecef; } td { font: .82rem "SFMono-Regular",Consolas,monospace; }
+    .empty,.warning { padding:18px; background:var(--surface); border:1px solid var(--line); } .warning { color:#793e05; border-left:4px solid var(--amber); } a { color:#087584; font-weight:700; }
+    @media(max-width:760px) { .inner,main { width:calc(100% - 28px); } .inner,.section-head { align-items:flex-start; flex-direction:column; } .health { grid-template-columns:1fr; } .stat { border-bottom:1px solid var(--line); } }
+  </style>
+</head>
+<body>
+  <header><div class="inner"><div><p class="kicker">Ground Segment</p><h1>MissionOps Lite</h1><p class="subtitle">{{ satellite_name }} · NORAD {{ norad_id }} · {{ station_name }} · {{ station_lat }}, {{ station_lon }} · {{ station_elev_m }}m</p></div></div></header>
+  <main>
+    {% if database_error %}<p class="warning" role="alert">{{ database_error }}</p>{% endif %}
+    <section><div class="section-head"><div><p class="kicker">System 01</p><h2>Mission Health</h2></div><span class="source">PostgreSQL operational record</span></div><div class="health"><div class="stat"><div class="label">Observations / 24h</div><div class="value">{{ status.observations_ingested_last_24h }}</div></div><div class="stat"><div class="label">Observations / Total</div><div class="value">{{ status.observations_total }}</div></div><div class="stat"><div class="label">Last Observation Stored</div><div class="value">{{ status.last_successful_ingestion or "No rows ingested" }}</div></div></div></section>
+    <section><div class="section-head"><div><p class="kicker">Orbital 02</p><h2>Upcoming Passes</h2></div><span class="source">Celestrak TLE · Skyfield</span></div>{% if passes_error %}<p class="warning">Pass prediction unavailable: {{ passes_error }}</p>{% elif tle_stale %}<p class="warning">Showing passes computed from a cached (stale) TLE.</p>{% endif %}{% if passes %}<div class="table-wrap" role="region" aria-label="Upcoming satellite passes" tabindex="0"><table><thead><tr><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Max Elevation</th><th>Direction</th></tr></thead><tbody>{% for p in passes %}<tr><td>{{ p.aos }}</td><td>{{ p.los }}</td><td>{{ p.max_elevation_deg }}°</td><td>{{ p.direction }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No upcoming passes computed yet.</p>{% endif %}</section>
+    <section><div class="section-head"><div><p class="kicker">Telemetry 03</p><h2>Recent Observations</h2></div><span class="source">SatNOGS Network API</span></div>{% if observations %}<div class="table-wrap" role="region" aria-label="Recent SatNOGS observations" tabindex="0"><table><thead><tr><th>Timestamp (UTC)</th><th>NORAD ID</th><th>Signal Quality</th><th>Raw Data</th></tr></thead><tbody>{% for o in observations %}<tr><td>{{ o.timestamp }}</td><td>{{ o.satellite_id }}</td><td>{{ o.signal_quality or "n/a" }}</td><td><a href="{{ o.satnogs_url }}" target="_blank" rel="noopener noreferrer">view on SatNOGS</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No observations ingested yet.</p>{% endif %}</section>
+  </main>
+</body>
+</html>
