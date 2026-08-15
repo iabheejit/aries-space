@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from services.api.aries_api import config, main
-from services.api.aries_api.models import Base
+from services.api.aries_api.models import Base, Dataset
 from services.api.aries_api.storage import ObjectInfo, ObjectNotFoundError
 from services.api.aries_api.tle import TLERecord
 
@@ -157,7 +157,7 @@ def test_missionops_routes_and_dashboard_contract(api):
     assert status.json()["observations_total"] == 0
     assert set(observations.json()) == {"total", "limit", "offset", "observations"}
     assert set(passes.json()) == {"satellite", "station", "tle_stale", "tle_fetched_at", "passes"}
-    for name in ("Ground Segment", "Mission Health", "Upcoming Passes", "Recent Observations"):
+    for name in ("Aries Stage 0", "Mission Health", "Upcoming Passes", "Recent Observations"):
         assert name in dashboard.text
     assert "No observations ingested yet" in dashboard.text
     assert client.get("/api/passes?count=0").status_code == 422
@@ -243,3 +243,63 @@ def test_ingest_minio_stat_outage_returns_503(api):
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Dataset object could not be verified"}
+
+
+def test_benchmark_api_runs_pair_and_updates_dashboard(api):
+    client, _, _ = api
+    headers = {"Authorization": f"Bearer {main.config.API_BEARER_TOKEN}"}
+    ingested = client.post(
+        "/api/ingest/satnogs?norad_id=68635&limit=1", headers=headers
+    ).json()
+
+    created = client.post(
+        f"/api/benchmarks?dataset_id={ingested['dataset_id']}", headers=headers
+    )
+    latest = client.get(
+        "/api/benchmarks/latest?workload=satnogs-payload-anomaly-proxy"
+    )
+    dashboard = client.get("/")
+
+    assert created.status_code == 201
+    assert latest.status_code == 200
+    assert latest.json()["pair_id"] == created.json()["pair_id"]
+    assert len(created.json()["runs"]) == 2
+    assert {run["power_source"] for run in created.json()["runs"]} == {
+        "estimated",
+        "simulated",
+    }
+    assert len({run["output_bytes"] for run in created.json()["runs"]}) == 1
+    assert "Benchmark Comparison" in dashboard.text
+    assert "SIMULATED" in dashboard.text
+    assert "ESTIMATED" in dashboard.text
+    assert "No placement recommendation" in dashboard.text
+    assert "payload/metadata" in created.json()["workload"]["description"].lower()
+
+
+def test_benchmark_dataset_status_contracts(api):
+    client, _, sessions = api
+    headers = {"Authorization": f"Bearer {main.config.API_BEARER_TOKEN}"}
+
+    missing = client.post("/api/benchmarks?dataset_id=9999", headers=headers)
+    with sessions() as session:
+        now = datetime.now(timezone.utc)
+        dataset = Dataset(
+            source="sentinel2",
+            external_id="scene-1",
+            observed_at=now,
+            size_bytes=10,
+            object_key="sentinel/scene-1.json",
+            sha256="0" * 64,
+            ingested_at=now,
+            satellite_norad_id=None,
+            aoi_id=1,
+        )
+        session.add(dataset)
+        session.commit()
+        dataset_id = dataset.id
+    ineligible = client.post(
+        f"/api/benchmarks?dataset_id={dataset_id}", headers=headers
+    )
+
+    assert missing.status_code == 404
+    assert ineligible.status_code == 422

@@ -20,6 +20,23 @@ docker compose up --build --wait --wait-timeout 120
 
 Open `http://127.0.0.1:8000/`. API routes are `/api/passes`, `/api/observations`, and `/api/status`.
 
+## Benchmark Demo
+
+Run the complete local rehearsal against the largest stored real SatNOGS payload:
+
+```bash
+.venv/bin/python scripts/demo.py
+```
+
+The command ensures the captured real observation exists, executes the same `satnogs-payload-anomaly-proxy` workload on `ground-cpu` and `edge-sim`, persists both result objects, and prints the dashboard URL. The dashboard shows data reduction, modeled latency, energy, cost per completed run, and placement economics.
+
+This first workload is explicitly a payload/metadata completeness proxy. It is not decoded-frame telemetry anomaly detection. `edge-sim` timing and energy are **SIMULATED**; terrestrial power is **ESTIMATED**. Neither is evidence of measured orbital or Jetson performance.
+
+Benchmark APIs:
+
+- `POST /api/benchmarks?dataset_id=<id>` requires the shared bearer token.
+- `GET /api/benchmarks/latest?workload=satnogs-payload-anomaly-proxy` returns the latest completed atomic pair.
+
 ## Container Run
 
 ```bash
@@ -50,6 +67,10 @@ All configuration is environment-driven; see `.env.example`. Important controls:
 | `OBS_POLL_MINUTES` | at least 5 | `10` |
 | `TLE_REFRESH_HOURS` | positive integer | `12` |
 | `SCHEDULER_ENABLED` | true/false | `false` |
+| `DOWNLINK_MBPS` | positive modeled downlink rate | `100` |
+| `DOWNLINK_INR_PER_GB` | positive modeled downlink price | `500` |
+| `EDGE_SIM_SLOWDOWN_FACTOR` | positive modeled latency multiplier | `4` |
+| `EDGE_SIM_WATTS` | positive simulated edge power | `15` |
 
 The GHRCE values are a public campus pin, not verified antenna coordinates. Supply the antenna GPS position before pilot deployment.
 

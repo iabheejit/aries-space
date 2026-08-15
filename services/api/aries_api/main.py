@@ -13,6 +13,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from services.api.aries_api import config
+from services.api.aries_api.benchmarks import (
+    BenchmarkNotFoundError,
+    BenchmarkUnavailableError,
+    DatasetIneligibleError,
+    DatasetNotFoundError,
+    latest_completed_pair,
+    run_benchmark_pair,
+    serialize_pair,
+)
 from services.api.aries_api.db import check_database, get_session
 from services.api.aries_api.ingest import (
     IngestConflictError,
@@ -75,7 +84,7 @@ async def lifespan(_: FastAPI):
             stop_scheduler()
 
 
-app = FastAPI(title="MissionOps Lite", lifespan=lifespan)
+app = FastAPI(title="Aries Stage 0 Testbed", lifespan=lifespan)
 
 
 @app.get("/health/live")
@@ -159,6 +168,37 @@ def api_ingest_satnogs(
     return {"dataset_id": result.dataset_id, "external_id": result.external_id, "object_key": result.object_key, "size_bytes": result.size_bytes, "sha256": result.sha256}
 
 
+@app.post("/api/benchmarks", status_code=201)
+def api_run_benchmark(
+    dataset_id: int = Query(..., gt=0),
+    session: Session = Depends(get_session),
+    store: ObjectStore = Depends(get_store),
+    _: None = Depends(require_admin),
+):
+    try:
+        pair = run_benchmark_pair(session, store, dataset_id)
+        return serialize_pair(session, pair)
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatasetIneligibleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except BenchmarkUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/benchmarks/latest")
+def api_latest_benchmark(
+    workload: str = Query("satnogs-payload-anomaly-proxy"),
+    session: Session = Depends(get_session),
+):
+    try:
+        return serialize_pair(session, latest_completed_pair(session, workload))
+    except BenchmarkNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except BenchmarkUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, session: Session = Depends(get_session)):
     try:
@@ -177,6 +217,18 @@ def dashboard(request: Request, session: Session = Depends(get_session)):
         recent = []
         database_error = "Mission storage is temporarily unavailable. Retry shortly."
     try:
+        benchmark = serialize_pair(
+            session,
+            latest_completed_pair(session, "satnogs-payload-anomaly-proxy"),
+        )
+        benchmark_error = None
+    except BenchmarkNotFoundError:
+        benchmark = None
+        benchmark_error = "No benchmark pair has been run yet."
+    except (BenchmarkUnavailableError, SQLAlchemyError):
+        benchmark = None
+        benchmark_error = "Benchmark comparison is temporarily unavailable."
+    try:
         passes_payload = _passes_payload(5)
         passes_error = None
     except HTTPException as exc:
@@ -184,6 +236,6 @@ def dashboard(request: Request, session: Session = Depends(get_session)):
         passes_error = exc.detail
     return templates.TemplateResponse(request, "dashboard.html", {
         "satellite_name": config.SATELLITE_NAME, "norad_id": config.NORAD_ID, "station_name": config.STATION_NAME, "station_lat": config.STATION_LAT, "station_lon": config.STATION_LON, "station_elev_m": config.STATION_ELEV_M,
-        "status": status, "database_error": database_error, "passes": passes_payload["passes"], "passes_error": passes_error, "tle_stale": passes_payload["tle_stale"],
+        "status": status, "database_error": database_error, "benchmark": benchmark, "benchmark_error": benchmark_error, "passes": passes_payload["passes"], "passes_error": passes_error, "tle_stale": passes_payload["tle_stale"],
         "observations": [{"timestamp": row.timestamp, "satellite_id": row.satellite_id, "signal_quality": row.signal_quality, "satnogs_url": f"https://network.satnogs.org/observations/{row.satnogs_observation_id}/"} for row in recent],
     })
