@@ -51,7 +51,7 @@ jobs:
       - name: Verify runtime constraints
         run: |
           test "$(docker compose exec -T app id -u)" = "10001"
-          test "$(docker compose top app | grep -c 'uvicorn services.api.aries_api.main:app')" = "1"
+          test "$(docker compose top app | grep -v docker-init | grep -c 'uvicorn services.api.aries_api.main:app')" = "1"
           test "$(docker compose port app 8000)" = "127.0.0.1:8000"
           curl --fail --silent http://127.0.0.1:8000/health/live
           curl --fail --silent http://127.0.0.1:8000/health/ready
