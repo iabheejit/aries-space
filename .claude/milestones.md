@@ -1,6 +1,10 @@
 # Milestone Registry
 | # | Name | Status | Created | Completed | Plan | Audit |
 |---|------|--------|---------|-----------|------|-------|
-<!-- Status: PLANNED | IN_PROGRESS | COMPLETED | BLOCKED -->
+| 1 | MVP Prototype | COMPLETED | 2026-08-15 | 2026-08-15 | [plan](plans/milestone-1-mvp-prototype.md) | [audit](audit-trail.md#cto-consolidated--milestone-1) |
+| 2 | Production Readiness | SUPERSEDED by M3 | 2026-08-15 | 2026-08-15 | [plan](plans/milestone-2-production-readiness.md) | [interim audit](audit-trail.md#cto-consolidated--milestone-2-interim) |
+| 3 | Aries Storage Foundation | COMPLETED | 2026-08-15 | 2026-08-15 | [plan](plans/milestone-3-aries-platform-foundation.md) | [audit](audit-trail.md#cto-consolidated--milestone-3) |
+<!-- Status: PLANNED | IN_PROGRESS | COMPLETED | BLOCKED | SUPERSEDED -->
+<!-- SUPERSEDED = a later milestone replaced this one's architecture/deliverable before it reached COMPLETED -->
 <!-- Plan links to .claude/plans/milestone-{N}-{slug}.md -->
 <!-- Audit links to section in audit-trail.md -->
