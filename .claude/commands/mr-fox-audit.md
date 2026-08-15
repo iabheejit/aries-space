@@ -1,0 +1,1 @@
+Spawn all seven agents from .claude/agents/ in parallel: security-auditor, project-manager, system-architect, founder-strategist, software-engineer, ux-designer, devops-engineer. Each reads the current milestone plan and changed files, appends findings to .claude/audit-trail.md. After all seven complete, write the CTO Consolidated entry to .claude/audit-trail.md.
