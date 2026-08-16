@@ -16,7 +16,11 @@ from services.api.aries_api.benchmarks import (
 )
 from services.api.aries_api.ingest import ingest_satnogs_observation
 from services.api.aries_api.models import Base, BenchmarkPair, BenchmarkRun, Dataset
-from services.api.aries_api.sentinel2_ingest import ingest_sentinel2_crop
+from services.api.aries_api.sentinel2_ingest import (
+    AOI_COASTAL_PORT,
+    AOI_GHRCE_AGRICULTURAL,
+    ingest_sentinel2_crop,
+)
 from services.api.aries_api.storage import ObjectInfo, ObjectNotFoundError
 
 
@@ -187,8 +191,31 @@ def sentinel2_benchmark_context():
     ).read_bytes()
     store = MemoryStore()
     with Session(engine, expire_on_commit=False) as session:
-        dataset_id = ingest_sentinel2_crop(session, store, crop).dataset_id
+        dataset_id = ingest_sentinel2_crop(
+            session, store, crop, AOI_GHRCE_AGRICULTURAL
+        ).dataset_id
         yield session, store, dataset_id
+
+
+@pytest.fixture
+def multi_aoi_benchmark_context():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    agricultural_crop = (
+        Path(__file__).parent / "fixtures" / "sentinel2_crop_43QHD_128.tif"
+    ).read_bytes()
+    coastal_crop = (
+        Path(__file__).parent / "fixtures" / "sentinel2_crop_43QBA_coastal_128.tif"
+    ).read_bytes()
+    store = MemoryStore()
+    with Session(engine, expire_on_commit=False) as session:
+        agricultural_id = ingest_sentinel2_crop(
+            session, store, agricultural_crop, AOI_GHRCE_AGRICULTURAL
+        ).dataset_id
+        coastal_id = ingest_sentinel2_crop(
+            session, store, coastal_crop, AOI_COASTAL_PORT
+        ).dataset_id
+        yield session, store, agricultural_id, coastal_id
 
 
 def test_sentinel2_benchmark_pair_produces_real_recommendation(
@@ -219,6 +246,53 @@ def test_satnogs_dataset_is_ineligible_for_sentinel2_workload(benchmark_context)
     with pytest.raises(DatasetIneligibleError):
         run_benchmark_pair(
             session, store, dataset_id, workload_slug="sentinel2-ndvi-summary"
+        )
+
+
+def test_cloud_mask_and_ship_detect_run_against_the_right_aoi(
+    multi_aoi_benchmark_context,
+):
+    session, store, agricultural_id, coastal_id = multi_aoi_benchmark_context
+
+    cloud_pair = run_benchmark_pair(
+        session, store, agricultural_id, workload_slug="cloud-mask"
+    )
+    ship_pair = run_benchmark_pair(
+        session, store, coastal_id, workload_slug="ship-detect"
+    )
+
+    assert cloud_pair.status == "completed"
+    assert ship_pair.status == "completed"
+    cloud_payload = serialize_pair(session, cloud_pair)
+    ship_payload = serialize_pair(session, ship_pair)
+    for run in cloud_payload["runs"]:
+        assert "cloud_fraction" in run["result"]
+    for run in ship_payload["runs"]:
+        assert "bright_pixel_count" in run["result"]
+
+
+def test_ship_detect_rejects_agricultural_aoi(multi_aoi_benchmark_context):
+    session, store, agricultural_id, _coastal_id = multi_aoi_benchmark_context
+
+    with pytest.raises(DatasetIneligibleError):
+        run_benchmark_pair(
+            session, store, agricultural_id, workload_slug="ship-detect"
+        )
+
+
+def test_cloud_mask_rejects_coastal_aoi(multi_aoi_benchmark_context):
+    session, store, _agricultural_id, coastal_id = multi_aoi_benchmark_context
+
+    with pytest.raises(DatasetIneligibleError):
+        run_benchmark_pair(session, store, coastal_id, workload_slug="cloud-mask")
+
+
+def test_ndvi_summary_rejects_coastal_aoi(multi_aoi_benchmark_context):
+    session, store, _agricultural_id, coastal_id = multi_aoi_benchmark_context
+
+    with pytest.raises(DatasetIneligibleError):
+        run_benchmark_pair(
+            session, store, coastal_id, workload_slug="sentinel2-ndvi-summary"
         )
 
 

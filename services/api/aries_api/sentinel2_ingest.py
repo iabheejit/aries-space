@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,80 +17,126 @@ from services.api.aries_api.storage import ObjectNotFoundError, ObjectStore
 
 logger = logging.getLogger("aries.sentinel2_ingest")
 
-# Placeholder Area-of-Interest identifier. There is no AOI catalog table yet
-# (that is future roadmap work — see biz/orbital-compute-access-plan.md /
-# the "Expand Evidence Inputs" milestone); this fixed id just satisfies the
-# Dataset schema's "must have a satellite or an AOI subject" constraint for
-# a single documented AOI (GHRCE region, Nagpur agricultural cropland).
-AOI_ID = 1
+# There is no AOI catalog table yet (that is further roadmap work); these
+# fixed ids are a small, explicit, documented registry -- not a generic
+# rules engine -- that gives the existing Dataset.aoi_id column real
+# meaning so workloads can be restricted to the right scene (see
+# WorkloadSpec.eligible_aoi_ids in benchmarks.py).
+AOI_GHRCE_AGRICULTURAL = 1  # Nagpur agricultural cropland, GHRCE region
+AOI_COASTAL_PORT = 2  # Mumbai/JNPT coastal water, ship-detect target
+
+
+@dataclass(frozen=True)
+class SceneConfig:
+    aoi_id: int
+    aoi_name: str
+    item_id: str
+    band_hrefs: tuple[str, ...]  # ordered; band 1, band 2, ...
+    window: Window
+    observed_at: datetime
+    fixture_path: str | None
+
+
+def _scene_registry() -> dict[int, SceneConfig]:
+    return {
+        AOI_GHRCE_AGRICULTURAL: SceneConfig(
+            aoi_id=AOI_GHRCE_AGRICULTURAL,
+            aoi_name="ghrce-agricultural",
+            item_id=config.SENTINEL2_ITEM_ID,
+            band_hrefs=(config.SENTINEL2_RED_HREF, config.SENTINEL2_NIR_HREF),
+            window=Window(
+                config.SENTINEL2_CROP_COL_OFF,
+                config.SENTINEL2_CROP_ROW_OFF,
+                config.SENTINEL2_CROP_WIDTH,
+                config.SENTINEL2_CROP_HEIGHT,
+            ),
+            observed_at=config.SENTINEL2_OBSERVED_AT,
+            fixture_path=config.SENTINEL2_FIXTURE_PATH,
+        ),
+        AOI_COASTAL_PORT: SceneConfig(
+            aoi_id=AOI_COASTAL_PORT,
+            aoi_name="coastal-port",
+            item_id=config.SENTINEL2_COASTAL_ITEM_ID,
+            band_hrefs=(config.SENTINEL2_COASTAL_NIR_HREF,),
+            window=Window(
+                config.SENTINEL2_COASTAL_CROP_COL_OFF,
+                config.SENTINEL2_COASTAL_CROP_ROW_OFF,
+                config.SENTINEL2_COASTAL_CROP_WIDTH,
+                config.SENTINEL2_COASTAL_CROP_HEIGHT,
+            ),
+            observed_at=config.SENTINEL2_COASTAL_OBSERVED_AT,
+            fixture_path=config.SENTINEL2_COASTAL_FIXTURE_PATH,
+        ),
+    }
 
 
 def _read_crop_from_fixture(fixture_path: str) -> bytes:
     return Path(fixture_path).read_bytes()
 
 
-def _read_crop_live(red_href: str, nir_href: str, window: Window) -> bytes:
+def _read_crop_live(scene: SceneConfig) -> bytes:
     # GDAL's /vsicurl/ has no timeout by default -- a stalled upstream
     # response would otherwise hang the fetching thread indefinitely.
     gdal_env = rasterio.Env(
         GDAL_HTTP_TIMEOUT=config.SENTINEL2_FETCH_TIMEOUT_SECONDS,
         GDAL_HTTP_CONNECTTIMEOUT=config.SENTINEL2_FETCH_TIMEOUT_SECONDS,
     )
+    bands = []
+    transform = None
+    crs = None
     with gdal_env:
-        with rasterio.open(f"/vsicurl/{red_href}") as red_src:
-            red = red_src.read(1, window=window)
-            transform = red_src.window_transform(window)
-            crs = red_src.crs
-        with rasterio.open(f"/vsicurl/{nir_href}") as nir_src:
-            nir = nir_src.read(1, window=window)
+        for href in scene.band_hrefs:
+            with rasterio.open(f"/vsicurl/{href}") as src:
+                bands.append(src.read(1, window=scene.window))
+                if transform is None:
+                    transform = src.window_transform(scene.window)
+                    crs = src.crs
 
     profile = {
         "driver": "GTiff",
         "dtype": "uint16",
-        "width": int(window.width),
-        "height": int(window.height),
-        "count": 2,
+        "width": int(scene.window.width),
+        "height": int(scene.window.height),
+        "count": len(bands),
         "crs": crs,
         "transform": transform,
         "compress": "deflate",
     }
     with rasterio.io.MemoryFile() as memfile:
         with memfile.open(**profile) as dst:
-            dst.write(red, 1)
-            dst.write(nir, 2)
+            for index, band in enumerate(bands, start=1):
+                dst.write(band, index)
         return bytes(memfile.read())
 
 
-def fetch_sentinel2_crop() -> bytes:
-    """Fetch a real Sentinel-2 L2A red/NIR crop, or read one from a fixture
-    for deterministic offline use (mirrors SATNOGS_FIXTURE_PATH).
+def fetch_sentinel2_crop(aoi_id: int) -> bytes:
+    """Fetch a real Sentinel-2 L2A crop for the given AOI, or read one from
+    a fixture for deterministic offline use (mirrors SATNOGS_FIXTURE_PATH).
     """
-    if config.SENTINEL2_FIXTURE_PATH is not None:
-        return _read_crop_from_fixture(config.SENTINEL2_FIXTURE_PATH)
-    window = Window(
-        config.SENTINEL2_CROP_COL_OFF,
-        config.SENTINEL2_CROP_ROW_OFF,
-        config.SENTINEL2_CROP_WIDTH,
-        config.SENTINEL2_CROP_HEIGHT,
-    )
+    scene = _scene_registry()[aoi_id]
+    if scene.fixture_path is not None:
+        return _read_crop_from_fixture(scene.fixture_path)
     try:
-        return _read_crop_live(config.SENTINEL2_RED_HREF, config.SENTINEL2_NIR_HREF, window)
+        return _read_crop_live(scene)
     except Exception as exc:
-        logger.warning("sentinel2_fetch_failed item=%s: %s", config.SENTINEL2_ITEM_ID, exc)
+        logger.warning(
+            "sentinel2_fetch_failed aoi_id=%s item=%s: %s", aoi_id, scene.item_id, exc
+        )
         raise IngestUnavailableError("Sentinel-2 crop is unavailable") from exc
 
 
-def ingest_sentinel2_crop(session: Session, store: ObjectStore, payload: bytes):
-    """Store a Sentinel-2 red/NIR crop as a checksum-verified Dataset,
-    deduplicated on (source, external_id) exactly like SatNOGS ingestion.
+def ingest_sentinel2_crop(session: Session, store: ObjectStore, payload: bytes, aoi_id: int):
+    """Store a Sentinel-2 crop as a checksum-verified Dataset, deduplicated
+    on (source, external_id) exactly like SatNOGS ingestion. external_id
+    and object key are scoped by AOI so scenes never collide.
     """
+    scene = _scene_registry()[aoi_id]
     external_id = (
-        f"{config.SENTINEL2_ITEM_ID}:{config.SENTINEL2_CROP_COL_OFF}_"
-        f"{config.SENTINEL2_CROP_ROW_OFF}_{config.SENTINEL2_CROP_WIDTH}_"
-        f"{config.SENTINEL2_CROP_HEIGHT}"
+        f"{scene.item_id}:{int(scene.window.col_off)}_{int(scene.window.row_off)}_"
+        f"{int(scene.window.width)}_{int(scene.window.height)}"
     )
     checksum = hashlib.sha256(payload).hexdigest()
-    key = f"sentinel2/{config.SENTINEL2_ITEM_ID}/{external_id.split(':', 1)[1]}.tif"
+    key = f"sentinel2/{scene.item_id}/{external_id.split(':', 1)[1]}.tif"
     _lock_ingestion(session, "sentinel2", external_id)
 
     existing = session.scalar(
@@ -140,12 +187,12 @@ def ingest_sentinel2_crop(session: Session, store: ObjectStore, payload: bytes):
     dataset = Dataset(
         source="sentinel2",
         external_id=external_id,
-        observed_at=config.SENTINEL2_OBSERVED_AT,
+        observed_at=scene.observed_at,
         size_bytes=len(payload),
         object_key=key,
         sha256=checksum,
         ingested_at=ingested_at,
-        aoi_id=AOI_ID,
+        aoi_id=scene.aoi_id,
     )
     session.add(dataset)
     try:

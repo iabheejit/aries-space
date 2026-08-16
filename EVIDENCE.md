@@ -52,12 +52,36 @@ All timestamps are UTC. Estimated and simulated values are never presented as me
 - Dashboard: "Benchmark Comparison" section now shows this pair (dashboard displays the single most-recently-completed pair across all workloads, not hardcoded to one workload)
 - Limitation: single scene, single AOI, no repeated-run p95 (15 iterations, not the 1000 used for the tiny JSON workload — heavier per-call cost required a smaller, still-representative sample; see `SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS`)
 
+## 2026-08-16 — Expand Evidence Inputs (Milestone 5 / Roadmap Stage 4)
+
+Second real Sentinel-2 scene, two new deterministic workloads (`cloud-mask`, `ship-detect`), and AOI-scoped dataset eligibility, all live-verified against a freshly reset Compose stack (`docker compose down --volumes` then rebuilt) with both Sentinel-2 fixtures disabled (`SENTINEL2_FIXTURE_PATH=`/`SENTINEL2_COASTAL_FIXTURE_PATH=` empty → live AWS fetch). Closes the roadmap's Stage 4 exit gate: "≥2 Sentinel scenes + real SatNOGS data feed all four workload types."
+
+**Second scene — coastal/port**: live Sentinel-2 L2A scene `S2A_43QBA_20260428_0_L2A` (acquired 2026-04-28T05:54:10.92Z, cloud cover 2.52%), NIR band (B08) only, fetched via windowed HTTP range read over Mumbai/JNPT coastal water. Crop: 1024×1024, 1 band, uint16. Ingested dataset id `3`, object key `sentinel2/S2A_43QBA_20260428_0_L2A/0_0_1024_1024.tif`, size `1,516,117 bytes`, SHA-256 `638d0922940bf3d706e22f329b34e66a4c396f0451b8775047fad01004f3e4c1`, `aoi_id=2` (distinct from the agricultural scene's `aoi_id=1`).
+
+**`cloud-mask`** (detector `red-nir-brightness-v1`): deterministic red+NIR joint-brightness threshold computed from raw bands (not the SCL shortcut) against the same agricultural dataset (`aoi_id=1`) used for `ndvi-summary` — proves one ingested dataset can feed multiple eligible workloads. Pair `2`, correlation ID `d4b9dba3-4764-4d01-8835-eaa11acb9d57`.
+- `ground-cpu`: wall `11.22 ms`, power `25 W ESTIMATED`, energy `0.2806 J`, cost/run `₹0.0003124`
+- `edge-sim`: wall `44.90 ms`, power `15 W SIMULATED`, energy `0.6735 J`, cost/run `₹0.0000015`
+- Output `582 bytes` vs. input `3,346,740 bytes` → **DRF 5750.4×**. Cloud fraction: **1.78%** (quadrant breakdown: NW 1.60%, NE 0.65%, SW 2.18%, SE 2.70%) — plausible against the scene's real ~1.26% STAC-reported cloud cover, computed independently from raw pixels, not read from metadata.
+- **Recommendation: `simulated_edge`, break-even ₹0.00/GB** (same cost-model driver as the NDVI run: edge pays no compute rent).
+
+**`ship-detect`** (detector `bright-pixel-cluster-v1`): deterministic bright-pixel-cluster count against a water background in the single-band coastal NIR crop. Pair `3`, correlation ID `aa381bd2-4999-458d-bed8-20ab7325f4d7`.
+- `ground-cpu`: wall `5.91 ms`, power `25 W ESTIMATED`, energy `0.1476 J`, cost/run `₹0.0001644`
+- `edge-sim`: wall `23.62 ms`, power `15 W SIMULATED`, energy `0.3544 J`, cost/run `₹0.0000008`
+- Output `2,264 bytes` (41 candidate grid cells) vs. input `1,516,117 bytes` → **DRF 669.7×**. `11,470` bright pixels (1.09% of the crop) flagged across 41 of 64 grid cells.
+- **Recommendation: `simulated_edge`, break-even ₹0.00/GB**.
+- Limitation stated plainly in the workload's own result payload: this is a statistical brightness proxy for vessel presence, not a validated ship-detection model — no ground-truth vessel count was used to score it.
+
+**AOI-scoped eligibility, verified live (not just unit-tested)**: `POST /api/benchmarks?dataset_id=2&workload=ship-detect` (agricultural dataset against the coastal-only workload) returned `422 {"detail": "Dataset AOI '1' is not eligible for workload 'ship-detect' (eligible: [2])"}` — the same fail-closed check unit tests exercise, confirmed against the real API.
+
+**Full four-workload matrix now real**: `satnogs-payload-anomaly-proxy` (real SatNOGS, DRF 0.97×, no recommendation by design), `sentinel2-ndvi-summary` (agricultural, DRF 6314.6×), `cloud-mask` (agricultural, DRF 5750.4×), `ship-detect` (coastal, DRF 669.7×) — all with honest `ESTIMATED`/`SIMULATED` labels, all checksum-verified, all reproducible via `scripts/compose_smoke.py` (fixture-backed, offline by default).
+
 ## Pending Evidence
 
-- Hosted CI screenshots for fixed desktop/mobile viewports
-- Additional Sentinel-2 scenes/AOIs (ship-detect, cloud-mask workloads) — Stage 4 proper
+- Hosted CI screenshots for fixed desktop/mobile viewports (now automated — see `tests/test_dashboard_playwright.py`, screenshots stored as `container-smoke` CI artifacts)
+- Watch-folder ingestion for "eventual GHRCE output" — deferred to a follow-on milestone (Milestone 5 plan, Revision Note)
+- Additional Sentinel-2 scenes/AOIs beyond the current two
 - Measured Jetson power via `tegrastats`
-- GHRCE watch-folder pass and exact antenna coordinates
+- GHRCE exact antenna coordinates
 - Benchmark Report v0 PDF
 - Demo video takes and grant-submission artifact IDs
 - DoT/TCOE application: entity registration status (DPIIT/Udyam), 3-years audited financials, GHRCE Letter of Consent/Intent, itemized budget — all founder-side, not technical
