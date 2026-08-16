@@ -411,3 +411,18 @@
 - [ ] Founder-side grant blockers unchanged: entity registration, 3-years audited financials, GHRCE LoI, itemized budget — Meera
 - [ ] Complete the rest of Milestone 4's original acceptance criteria (dashboard/report polish, Playwright screenshots) before declaring M4 fully COMPLETED — Kavitha
 **Mr Fox's Note to Abheejit**: The TRL 5 mechanism is real and demoable — you saw the dashboard. Say it in the application exactly the way Meera framed it (real-data, single-scenario, disclosed simulated-edge limitation) rather than an unqualified "TRL 5 achieved," and you're on solid ground if a reviewer pushes back. Milestone 4 itself isn't finished — this was a focused detour to clear a grant gate, not the whole plan — so decide whether to keep going on M4's original scope now or shift to the founder-side paperwork that's now the actual critical path.
+
+### Milestone 4 Closure — All Acceptance Criteria Verified
+**Date**: 2026-08-16
+**Verified by**: Mr Fox (self-verification against the milestone plan, not a fresh 7-agent round — the interim audit above already covered this work's substance; this closes the two gaps it disclosed)
+**Status**: COMPLETED
+
+Both gaps named in the interim audit are closed:
+- Kavitha's AC9 gap (no Playwright/screenshot tests existed): `tests/test_dashboard_playwright.py` added, gated on `ARIES_DASHBOARD_BASE_URL`, asserting Benchmark Comparison presence, no page-level horizontal overflow, and `SIMULATED`/`ESTIMATED` labels at both `1440x1000` and `390x844`; wired into `container-smoke` CI with screenshots uploaded as job artifacts (confirmed present on the run).
+- Sanjay's CI-coverage gap (Sentinel-2 path never exercised in CI): `compose.yml` now defaults `SENTINEL2_FIXTURE_PATH` the same way `SATNOGS_FIXTURE_PATH` already was; `scripts/compose_smoke.py` ingests and benchmarks the `sentinel2-ndvi-summary` workload alongside the SatNOGS one, verifying DB rows, MinIO objects, a real non-null recommendation, and persistence across app recreation. Verified locally end-to-end against a fresh Compose stack before pushing, then confirmed identical behavior in CI.
+
+Also applied Rajan's two non-blocking nits (`sample_iterations` moved onto `WorkloadSpec`, duplicated `DEFAULT_WORKLOAD_SLUG` literal removed).
+
+All 9 original Milestone 4 acceptance criteria (see plan) plus the Scope Amendment's TRL 5 evidence are now met and CI-verified: `test (3.11)`, `test (3.13)`, and `container-smoke` (including the new Playwright step) all green on `milestone/4-benchmark-kernel`. 72 unit/integration tests pass, 5 skipped (correctly gated on live-stack env vars not present in the offline job).
+
+**Remaining, explicitly deferred to later milestones (per the plan's Out of Scope / Dependencies)**: Redis/RQ async execution, ONNX workloads, ship-detect/cloud-mask/watch-folder Sentinel-2 expansion, Jetson/measured power, React dashboard, and — separately, founder-side, not technical — DPIIT/Udyam registration, 3-years audited financials, GHRCE signed LoI, and the itemized grant budget.
