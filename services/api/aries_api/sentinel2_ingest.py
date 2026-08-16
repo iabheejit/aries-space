@@ -29,12 +29,19 @@ def _read_crop_from_fixture(fixture_path: str) -> bytes:
 
 
 def _read_crop_live(red_href: str, nir_href: str, window: Window) -> bytes:
-    with rasterio.open(f"/vsicurl/{red_href}") as red_src:
-        red = red_src.read(1, window=window)
-        transform = red_src.window_transform(window)
-        crs = red_src.crs
-    with rasterio.open(f"/vsicurl/{nir_href}") as nir_src:
-        nir = nir_src.read(1, window=window)
+    # GDAL's /vsicurl/ has no timeout by default -- a stalled upstream
+    # response would otherwise hang the fetching thread indefinitely.
+    gdal_env = rasterio.Env(
+        GDAL_HTTP_TIMEOUT=config.SENTINEL2_FETCH_TIMEOUT_SECONDS,
+        GDAL_HTTP_CONNECTTIMEOUT=config.SENTINEL2_FETCH_TIMEOUT_SECONDS,
+    )
+    with gdal_env:
+        with rasterio.open(f"/vsicurl/{red_href}") as red_src:
+            red = red_src.read(1, window=window)
+            transform = red_src.window_transform(window)
+            crs = red_src.crs
+        with rasterio.open(f"/vsicurl/{nir_href}") as nir_src:
+            nir = nir_src.read(1, window=window)
 
     profile = {
         "driver": "GTiff",
@@ -68,6 +75,7 @@ def fetch_sentinel2_crop() -> bytes:
     try:
         return _read_crop_live(config.SENTINEL2_RED_HREF, config.SENTINEL2_NIR_HREF, window)
     except Exception as exc:
+        logger.warning("sentinel2_fetch_failed item=%s: %s", config.SENTINEL2_ITEM_ID, exc)
         raise IngestUnavailableError("Sentinel-2 crop is unavailable") from exc
 
 
