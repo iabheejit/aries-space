@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -59,3 +59,90 @@ class Pass(Base):
     direction: Mapped[str] = mapped_column(String(32))
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     tle_stale: Mapped[bool] = mapped_column(default=False)
+
+
+class Workload(Base):
+    __tablename__ = "workloads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    name: Mapped[str] = mapped_column(String(256))
+    detector_version: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text)
+
+
+class ExecutionTarget(Base):
+    __tablename__ = "execution_targets"
+    __table_args__ = (
+        CheckConstraint(
+            "power_source IN ('estimated', 'simulated', 'measured_external')",
+            name="ck_execution_targets_power_source",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    power_source: Mapped[str] = mapped_column(String(32))
+    model_version: Mapped[str] = mapped_column(String(64))
+    avg_watts: Mapped[float] = mapped_column(Float)
+    slowdown_factor: Mapped[float] = mapped_column(Float)
+    is_simulated: Mapped[bool] = mapped_column(Boolean)
+
+
+class BenchmarkPair(Base):
+    __tablename__ = "benchmark_pairs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_benchmark_pairs_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    correlation_id: Mapped[str] = mapped_column(String(36), unique=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="RESTRICT"))
+    workload_id: Mapped[int] = mapped_column(ForeignKey("workloads.id", ondelete="RESTRICT"))
+    dataset_sha256: Mapped[str] = mapped_column(String(64))
+    detector_version: Mapped[str] = mapped_column(String(64))
+    assumptions: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16))
+    recommendation: Mapped[str | None] = mapped_column(String(32))
+    break_even_downlink_inr_per_gb: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class BenchmarkRun(Base):
+    __tablename__ = "benchmark_runs"
+    __table_args__ = (
+        UniqueConstraint("pair_id", "target_id", name="uq_benchmark_runs_pair_target"),
+        CheckConstraint(
+            "status IN ('completed', 'failed')", name="ck_benchmark_runs_status"
+        ),
+        CheckConstraint(
+            "power_source IN ('estimated', 'simulated', 'measured_external')",
+            name="ck_benchmark_runs_power_source",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("benchmark_pairs.id", ondelete="CASCADE"))
+    target_id: Mapped[int] = mapped_column(ForeignKey("execution_targets.id", ondelete="RESTRICT"))
+    status: Mapped[str] = mapped_column(String(16))
+    result_object_key: Mapped[str] = mapped_column(String(512), unique=True)
+    result_sha256: Mapped[str] = mapped_column(String(64))
+    input_bytes: Mapped[int] = mapped_column(BigInteger)
+    output_bytes: Mapped[int] = mapped_column(BigInteger)
+    wall_ms: Mapped[float] = mapped_column(Float)
+    inference_ms: Mapped[float] = mapped_column(Float)
+    avg_watts: Mapped[float] = mapped_column(Float)
+    energy_joules: Mapped[float] = mapped_column(Float)
+    power_source: Mapped[str] = mapped_column(String(32))
+    simulation_model_version: Mapped[str] = mapped_column(String(64))
+    data_reduction_factor: Mapped[float] = mapped_column(Float)
+    downlink_saved_bytes: Mapped[int] = mapped_column(BigInteger)
+    downlink_saved_seconds: Mapped[float] = mapped_column(Float)
+    cost_per_run_inr: Mapped[float] = mapped_column(Float)
+    result: Mapped[dict] = mapped_column(JSON)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

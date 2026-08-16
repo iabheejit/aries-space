@@ -114,6 +114,38 @@ def main() -> int:
     assert created_status in {200, 201}
     assert repeated_status == 200
     assert created == repeated
+    benchmark_status, benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={created['dataset_id']}", method="POST"
+    )
+    assert benchmark_status == 201
+    assert len(benchmark["runs"]) == 2
+    assert {run["power_source"] for run in benchmark["runs"]} == {
+        "estimated",
+        "simulated",
+    }
+
+    # Sentinel-2 path: fixture-backed in CI/Compose by default (no live
+    # network dependency in a smoke test), same checksum/dedup contract as
+    # SatNOGS, but exercised against a real, genuine-data-reduction workload.
+    s2_created_status, s2_created = _json_request(
+        "/api/ingest/sentinel2", method="POST"
+    )
+    s2_repeated_status, s2_repeated = _json_request(
+        "/api/ingest/sentinel2", method="POST"
+    )
+    assert s2_created_status in {200, 201}
+    assert s2_repeated_status == 200
+    assert s2_created == s2_repeated
+    s2_benchmark_status, s2_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=sentinel2-ndvi-summary",
+        method="POST",
+    )
+    assert s2_benchmark_status == 201
+    assert len(s2_benchmark["runs"]) == 2
+    assert s2_benchmark["recommendation"] in {"ground", "simulated_edge"}
+    assert s2_benchmark["break_even_downlink_inr_per_gb"] is not None
+    for run in s2_benchmark["runs"]:
+        assert run["data_reduction_factor"] > 1
 
     with psycopg.connect(PSYCOPG_DATABASE_URL) as connection:
         migration = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
@@ -126,9 +158,15 @@ def main() -> int:
             "SELECT count(*) FROM observations WHERE satnogs_observation_id = %s",
             (int(created["external_id"]),),
         ).fetchone()
-    assert migration == "0001_aries_storage_foundation"
+        sentinel2_dataset = connection.execute(
+            """SELECT count(*) FROM datasets
+               WHERE source = 'sentinel2' AND external_id = %s""",
+            (s2_created["external_id"],),
+        ).fetchone()
+    assert migration == "0002_benchmark_kernel"
     assert dataset[0] == observation_count[0] == 1
     assert dataset[1:] == (created["object_key"], created["sha256"], created["size_bytes"])
+    assert sentinel2_dataset[0] == 1
 
     minio = Minio(
         "127.0.0.1:9000",
@@ -138,13 +176,23 @@ def main() -> int:
     )
     assert sorted(bucket.name for bucket in minio.list_buckets()) == ["processed", "raw", "results"]
     assert list(minio.list_objects("processed", recursive=True)) == []
-    assert list(minio.list_objects("results", recursive=True)) == []
     raw_objects = list(minio.list_objects("raw", recursive=True))
-    assert created["object_key"] in {item.object_name for item in raw_objects}
+    raw_keys = {item.object_name for item in raw_objects}
+    assert created["object_key"] in raw_keys
+    assert s2_created["object_key"] in raw_keys
+    result_objects = list(minio.list_objects("results", recursive=True))
+    expected_result_keys = {run["result_object_key"] for run in benchmark["runs"]} | {
+        run["result_object_key"] for run in s2_benchmark["runs"]
+    }
+    assert expected_result_keys <= {item.object_name for item in result_objects}
     with closing(minio.get_object("raw", created["object_key"])) as response:
         payload = response.read()
     assert len(payload) == created["size_bytes"]
     assert hashlib.sha256(payload).hexdigest() == created["sha256"]
+    with closing(minio.get_object("raw", s2_created["object_key"])) as response:
+        s2_payload = response.read()
+    assert len(s2_payload) == s2_created["size_bytes"]
+    assert hashlib.sha256(s2_payload).hexdigest() == s2_created["sha256"]
 
     subprocess.run(
         ["docker", "compose", "up", "--detach", "--force-recreate", "app"],
@@ -159,7 +207,31 @@ def main() -> int:
     )
     assert after_status == 200
     assert after == created
-    print(json.dumps({"status": "ok", "migration": migration, **created}, sort_keys=True))
+    latest_status, latest = _json_request(
+        "/api/benchmarks/latest?workload=satnogs-payload-anomaly-proxy"
+    )
+    assert latest_status == 200
+    assert latest["pair_id"] == benchmark["pair_id"]
+    s2_after_status, s2_after = _json_request("/api/ingest/sentinel2", method="POST")
+    assert s2_after_status == 200
+    assert s2_after == s2_created
+    s2_latest_status, s2_latest = _json_request(
+        "/api/benchmarks/latest?workload=sentinel2-ndvi-summary"
+    )
+    assert s2_latest_status == 200
+    assert s2_latest["pair_id"] == s2_benchmark["pair_id"]
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "migration": migration,
+                "benchmark_pair_id": benchmark["pair_id"],
+                "sentinel2_benchmark_pair_id": s2_benchmark["pair_id"],
+                **created,
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 

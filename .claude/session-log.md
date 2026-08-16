@@ -3,6 +3,29 @@
 <!-- Format: ## {date} | Milestone {N} | {title} -->
 <!-- What was done, what's next, any RESUME markers -->
 
+## 2026-08-16 | Milestone 4 | TRL 5 gate reached; git remote + M2 resolution; project identity unified
+**Done**:
+- Read the actual DoT/TCOE application form + program booklet (supplied by Abheejit) — found the hard gate: TRL 5-8 required to be eligible at all; project was TRL 4 ("pre-benchmark") at the time
+- Resolved Milestone 2 as SUPERSEDED by Milestone 3 (its architecture was replaced before its sole blocker, no git remote, was cleared)
+- Set up git remote (private `iabheejit/aries-space`), pushed all branches, merged milestones 1+3 to `main`; first remote CI run caught and fixed a real false-positive in the container-smoke "one uvicorn process" check
+- Fixed stale project identity in `CLAUDE.md` (still said "MissionOps Lite"/SQLite-era stack; README/architecture docs had already moved to "Aries Stage 0")
+- Built the TRL 5 evidence: added `sentinel2-ndvi-summary`, a second, real-data-reduction benchmark workload (deterministic NDVI summary from a real Sentinel-2 L2A red/NIR crop fetched live from AWS Open Data, no-sign-request) — the existing `satnogs-payload-anomaly-proxy` workload can structurally never produce a positive recommendation since its JSON output is bigger than its input
+- Generalized `benchmarks.py` from one hardcoded workload to a small `WorkloadSpec`/`WORKLOAD_REGISTRY` registry
+- Added `POST /api/ingest/sentinel2`, `workload=` param on `POST /api/benchmarks`; dashboard now shows the latest completed pair across all workloads (was hardcoded to the satnogs slug, silently showing a stale "no recommendation" result)
+- Fixed Docker image (missing `libexpat1` for rasterio/GDAL) and pinned `rasterio==1.4.4` (1.5.1 needs Python >=3.12, breaking the 3.11 CI job)
+- Live-verified end-to-end against the running Compose stack: real 3.3MB Sentinel-2 crop ingested, benchmarked, DRF 6314.6x, `recommendation: "simulated_edge"`, `break_even_downlink_inr_per_gb: 0.0` — genuine, non-degenerate, formula-traceable. Data survived a container recreate.
+- Documented the scope change as an explicit "Scope Amendment" in the milestone-4 plan (Sentinel-2 was originally out of scope for M4) rather than silent drift; updated `EVIDENCE.md`
+- 72 tests passing (up from 64), all offline/deterministic via a small committed real-data fixture; CI green on `milestone/4-benchmark-kernel` (not yet merged to main)
+- Saved memory: DoT/TCOE grant requirements + TRL timeline, for future-session accuracy
+
+**Next**:
+- Full Milestone 4 completion audit (7 specialists) before merging to `main` — dashboard/report polish, broader Sentinel-2 evidence, and the rest of the M4 plan's acceptance criteria are still open
+- Founder-side grant blockers remain: entity registration (DPIIT/Udyam), 3-years audited financials, GHRCE signed LoI, itemized budget, confirm document format TCOE wants
+
+**Decisions**: Pulled Sentinel-2/NDVI forward from M4's original Out of Scope list and from the roadmap's Stage 4, narrowly (one workload, one scene), specifically because it's the same thing as the TRL 5 grant gate — not treated as two separate asks.
+
+**Resume**: <!-- RESUME: milestone/4-benchmark-kernel has the TRL5 evidence, CI green, not merged to main. Next session: either continue M4 (dashboard/report polish per the original plan) or run the M4 completion audit if Abheejit considers the TRL5 evidence sufficient to move on. -->
+
 ## 2026-08-15 | Milestone 3 | Aries storage foundation implemented and audit fixes validated
 **Done**:
 - Cut MissionOps to one FastAPI runtime under `services/api/aries_api`, PostgreSQL 15 with Alembic, and MinIO raw-object provenance; removed the SQLite runtime package

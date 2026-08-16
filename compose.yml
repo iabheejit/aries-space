@@ -53,6 +53,7 @@ services:
       API_BEARER_TOKEN: "${API_BEARER_TOKEN:?Set API_BEARER_TOKEN in .env}"
       MINIO_SECURE: "false"
       SATNOGS_FIXTURE_PATH: "${SATNOGS_FIXTURE_PATH-/app/services/api/aries_api/fixtures/satnogs_observation_14790266.json}"
+      SENTINEL2_FIXTURE_PATH: "${SENTINEL2_FIXTURE_PATH-/app/services/api/aries_api/fixtures/sentinel2_crop_43QHD_128.tif}"
       NORAD_ID: "${NORAD_ID:-68635}"
       SATELLITE_NAME: "${SATELLITE_NAME:-CANVAS}"
       STATION_NAME: "${STATION_NAME:-GHRCE campus (approx.)}"

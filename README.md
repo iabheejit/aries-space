@@ -20,6 +20,31 @@ docker compose up --build --wait --wait-timeout 120
 
 Open `http://127.0.0.1:8000/`. API routes are `/api/passes`, `/api/observations`, and `/api/status`.
 
+## Benchmark Demo
+
+Run the complete local rehearsal against the largest stored real SatNOGS payload:
+
+```bash
+.venv/bin/python scripts/demo.py
+```
+
+The command ensures the captured real observation exists, executes the same `satnogs-payload-anomaly-proxy` workload on `ground-cpu` and `edge-sim`, persists both result objects, and prints the dashboard URL. The dashboard shows data reduction, modeled latency, energy, cost per completed run, and placement economics.
+
+This first workload is explicitly a payload/metadata completeness proxy. It is not decoded-frame telemetry anomaly detection. `edge-sim` timing and energy are **SIMULATED**; terrestrial power is **ESTIMATED**. Neither is evidence of measured orbital or Jetson performance.
+
+A second, real-data-reduction workload is available: `sentinel2-ndvi-summary` computes deterministic NDVI statistics from a live Sentinel-2 L2A red/NIR crop (AWS Open Data, no-sign-request). Unlike the SatNOGS proxy above (whose JSON output is larger than its input, so it never produces a positive recommendation), this workload's real megapixel-scale input against a small JSON summary produces a genuine, non-zero `break_even_downlink_inr_per_gb` and `recommendation` — see `EVIDENCE.md` for a worked example.
+
+```bash
+curl -X POST -H "Authorization: Bearer $API_BEARER_TOKEN" 'http://127.0.0.1:8000/api/ingest/sentinel2'
+curl -X POST -H "Authorization: Bearer $API_BEARER_TOKEN" 'http://127.0.0.1:8000/api/benchmarks?dataset_id=<id>&workload=sentinel2-ndvi-summary'
+```
+
+Benchmark APIs:
+
+- `POST /api/ingest/sentinel2` fetches and stores the configured Sentinel-2 crop (or reads `SENTINEL2_FIXTURE_PATH` if set); requires the shared bearer token.
+- `POST /api/benchmarks?dataset_id=<id>&workload=<slug>` requires the shared bearer token; `workload` defaults to `satnogs-payload-anomaly-proxy`.
+- `GET /api/benchmarks/latest?workload=<slug>` returns the latest completed atomic pair for that workload. The dashboard shows the latest completed pair across all workloads.
+
 ## Container Run
 
 ```bash
@@ -50,6 +75,10 @@ All configuration is environment-driven; see `.env.example`. Important controls:
 | `OBS_POLL_MINUTES` | at least 5 | `10` |
 | `TLE_REFRESH_HOURS` | positive integer | `12` |
 | `SCHEDULER_ENABLED` | true/false | `false` |
+| `DOWNLINK_MBPS` | positive modeled downlink rate | `100` |
+| `DOWNLINK_INR_PER_GB` | positive modeled downlink price | `500` |
+| `EDGE_SIM_SLOWDOWN_FACTOR` | positive modeled latency multiplier | `4` |
+| `EDGE_SIM_WATTS` | positive simulated edge power | `15` |
 
 The GHRCE values are a public campus pin, not verified antenna coordinates. Supply the antenna GPS position before pilot deployment.
 

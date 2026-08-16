@@ -8,6 +8,12 @@ WORKDIR /app
 RUN adduser --disabled-password --gecos "" --uid 10001 missionops \
     && chown missionops:missionops /app
 
+# libexpat1: runtime dependency of the rasterio/GDAL wheel, not present in
+# the slim base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --requirement requirements.txt
 
