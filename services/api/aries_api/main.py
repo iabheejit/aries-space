@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 
 from services.api.aries_api import config
 from services.api.aries_api.benchmarks import (
+    DEFAULT_WORKLOAD_SLUG,
     BenchmarkNotFoundError,
     BenchmarkUnavailableError,
     DatasetIneligibleError,
     DatasetNotFoundError,
+    WorkloadNotFoundError,
     latest_completed_pair,
     run_benchmark_pair,
     serialize_pair,
@@ -32,6 +34,7 @@ from services.api.aries_api.ingest import (
 from services.api.aries_api.models import Observation
 from services.api.aries_api.predict import compute_passes
 from services.api.aries_api.scheduler import start_scheduler, stop_scheduler
+from services.api.aries_api.sentinel2_ingest import fetch_sentinel2_crop, ingest_sentinel2_crop
 from services.api.aries_api.status import compute_status
 from services.api.aries_api.storage import ObjectStore
 from services.api.aries_api.tle import TLEUnavailableError, get_tle
@@ -168,16 +171,35 @@ def api_ingest_satnogs(
     return {"dataset_id": result.dataset_id, "external_id": result.external_id, "object_key": result.object_key, "size_bytes": result.size_bytes, "sha256": result.sha256}
 
 
-@app.post("/api/benchmarks", status_code=201)
-def api_run_benchmark(
-    dataset_id: int = Query(..., gt=0),
+@app.post("/api/ingest/sentinel2")
+def api_ingest_sentinel2(
+    response: Response,
     session: Session = Depends(get_session),
     store: ObjectStore = Depends(get_store),
     _: None = Depends(require_admin),
 ):
     try:
-        pair = run_benchmark_pair(session, store, dataset_id)
+        payload = fetch_sentinel2_crop()
+        result = ingest_sentinel2_crop(session, store, payload)
+    except IngestUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    response.status_code = 201 if result.created else 200
+    return {"dataset_id": result.dataset_id, "external_id": result.external_id, "object_key": result.object_key, "size_bytes": result.size_bytes, "sha256": result.sha256}
+
+
+@app.post("/api/benchmarks", status_code=201)
+def api_run_benchmark(
+    dataset_id: int = Query(..., gt=0),
+    workload: str = Query(DEFAULT_WORKLOAD_SLUG),
+    session: Session = Depends(get_session),
+    store: ObjectStore = Depends(get_store),
+    _: None = Depends(require_admin),
+):
+    try:
+        pair = run_benchmark_pair(session, store, dataset_id, workload_slug=workload)
         return serialize_pair(session, pair)
+    except WorkloadNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DatasetNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DatasetIneligibleError as exc:
@@ -217,10 +239,7 @@ def dashboard(request: Request, session: Session = Depends(get_session)):
         recent = []
         database_error = "Mission storage is temporarily unavailable. Retry shortly."
     try:
-        benchmark = serialize_pair(
-            session,
-            latest_completed_pair(session, "satnogs-payload-anomaly-proxy"),
-        )
+        benchmark = serialize_pair(session, latest_completed_pair(session))
         benchmark_error = None
     except BenchmarkNotFoundError:
         benchmark = None

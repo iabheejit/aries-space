@@ -16,6 +16,7 @@ from services.api.aries_api.benchmarks import (
 )
 from services.api.aries_api.ingest import ingest_satnogs_observation
 from services.api.aries_api.models import Base, BenchmarkPair, BenchmarkRun, Dataset
+from services.api.aries_api.sentinel2_ingest import ingest_sentinel2_crop
 from services.api.aries_api.storage import ObjectInfo, ObjectNotFoundError
 
 
@@ -96,12 +97,12 @@ def test_second_target_failure_rolls_back_pair_and_results(
     original = benchmarks._execute_target
     calls = 0
 
-    def fail_second(target, payload, ground_baseline_ms=None):
+    def fail_second(target, payload, spec, ground_baseline_ms=None):
         nonlocal calls
         calls += 1
         if calls == 2:
             raise RuntimeError("edge execution failed")
-        return original(target, payload, ground_baseline_ms)
+        return original(target, payload, spec, ground_baseline_ms)
 
     monkeypatch.setattr(benchmarks, "_execute_target", fail_second)
 
@@ -175,6 +176,50 @@ def test_dataset_eligibility_errors_are_distinct(benchmark_context):
 
     with pytest.raises(DatasetIneligibleError):
         run_benchmark_pair(session, store, ineligible.id)
+
+
+@pytest.fixture
+def sentinel2_benchmark_context():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    crop = (
+        Path(__file__).parent / "fixtures" / "sentinel2_crop_43QHD_128.tif"
+    ).read_bytes()
+    store = MemoryStore()
+    with Session(engine, expire_on_commit=False) as session:
+        dataset_id = ingest_sentinel2_crop(session, store, crop).dataset_id
+        yield session, store, dataset_id
+
+
+def test_sentinel2_benchmark_pair_produces_real_recommendation(
+    sentinel2_benchmark_context,
+):
+    session, store, dataset_id = sentinel2_benchmark_context
+
+    pair = run_benchmark_pair(
+        session, store, dataset_id, workload_slug="sentinel2-ndvi-summary"
+    )
+    payload = serialize_pair(session, pair)
+
+    assert pair.status == "completed"
+    # Real Sentinel-2 pixel crop in, tiny NDVI summary JSON out -- unlike the
+    # SatNOGS metadata proxy, this workload has a genuine data-reduction
+    # story, so a recommendation and break-even price must be computable.
+    assert payload["recommendation"] in {"ground", "simulated_edge"}
+    assert payload["break_even_downlink_inr_per_gb"] is not None
+    assert payload["break_even_downlink_inr_per_gb"] >= 0
+    for run in payload["runs"]:
+        assert run["data_reduction_factor"] > 10
+        assert run["downlink_saved_bytes"] > 0
+
+
+def test_satnogs_dataset_is_ineligible_for_sentinel2_workload(benchmark_context):
+    session, store, dataset_id = benchmark_context
+
+    with pytest.raises(DatasetIneligibleError):
+        run_benchmark_pair(
+            session, store, dataset_id, workload_slug="sentinel2-ndvi-summary"
+        )
 
 
 def test_latest_pair_orders_by_completed_pair(benchmark_context):

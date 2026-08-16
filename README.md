@@ -32,10 +32,18 @@ The command ensures the captured real observation exists, executes the same `sat
 
 This first workload is explicitly a payload/metadata completeness proxy. It is not decoded-frame telemetry anomaly detection. `edge-sim` timing and energy are **SIMULATED**; terrestrial power is **ESTIMATED**. Neither is evidence of measured orbital or Jetson performance.
 
+A second, real-data-reduction workload is available: `sentinel2-ndvi-summary` computes deterministic NDVI statistics from a live Sentinel-2 L2A red/NIR crop (AWS Open Data, no-sign-request). Unlike the SatNOGS proxy above (whose JSON output is larger than its input, so it never produces a positive recommendation), this workload's real megapixel-scale input against a small JSON summary produces a genuine, non-zero `break_even_downlink_inr_per_gb` and `recommendation` — see `EVIDENCE.md` for a worked example.
+
+```bash
+curl -X POST -H "Authorization: Bearer $API_BEARER_TOKEN" 'http://127.0.0.1:8000/api/ingest/sentinel2'
+curl -X POST -H "Authorization: Bearer $API_BEARER_TOKEN" 'http://127.0.0.1:8000/api/benchmarks?dataset_id=<id>&workload=sentinel2-ndvi-summary'
+```
+
 Benchmark APIs:
 
-- `POST /api/benchmarks?dataset_id=<id>` requires the shared bearer token.
-- `GET /api/benchmarks/latest?workload=satnogs-payload-anomaly-proxy` returns the latest completed atomic pair.
+- `POST /api/ingest/sentinel2` fetches and stores the configured Sentinel-2 crop (or reads `SENTINEL2_FIXTURE_PATH` if set); requires the shared bearer token.
+- `POST /api/benchmarks?dataset_id=<id>&workload=<slug>` requires the shared bearer token; `workload` defaults to `satnogs-payload-anomaly-proxy`.
+- `GET /api/benchmarks/latest?workload=<slug>` returns the latest completed atomic pair for that workload. The dashboard shows the latest completed pair across all workloads.
 
 ## Container Run
 

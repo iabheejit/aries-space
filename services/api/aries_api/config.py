@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from math import isfinite
 
 
@@ -102,6 +103,35 @@ BENCHMARK_TIMEOUT_SECONDS = _validate_positive(
 BENCHMARK_SAMPLE_ITERATIONS = _validate_positive(
     "BENCHMARK_SAMPLE_ITERATIONS", _int_env("BENCHMARK_SAMPLE_ITERATIONS", 1000)
 )
+# Raster workloads (e.g. Sentinel-2 NDVI) cost orders of magnitude more per
+# call than the tiny JSON-metadata SatNOGS proxy; a much smaller sample count
+# keeps the ground-cpu median measurement inside BENCHMARK_TIMEOUT_SECONDS.
+SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS = _validate_positive(
+    "SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS", _int_env("SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS", 15)
+)
+# Sentinel-2 L2A crop (AWS Open Data, no-sign-request): default scene is a
+# real, low-cloud (<2%) tile over the GHRCE/Nagpur agricultural region,
+# resolved 2026-08-16 via https://earth-search.aws.element84.com/v1.
+SENTINEL2_ITEM_ID = os.environ.get("SENTINEL2_ITEM_ID", "S2C_43QHD_20260619_0_L2A")
+SENTINEL2_RED_HREF = os.environ.get(
+    "SENTINEL2_RED_HREF",
+    "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/43/Q/HD/2026/6/S2C_43QHD_20260619_0_L2A/B04.tif",
+)
+SENTINEL2_NIR_HREF = os.environ.get(
+    "SENTINEL2_NIR_HREF",
+    "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/43/Q/HD/2026/6/S2C_43QHD_20260619_0_L2A/B08.tif",
+)
+SENTINEL2_OBSERVED_AT = datetime.fromisoformat(
+    os.environ.get("SENTINEL2_OBSERVED_AT", "2026-06-19T05:33:00.760000+00:00")
+)
+if SENTINEL2_OBSERVED_AT.tzinfo is None:
+    SENTINEL2_OBSERVED_AT = SENTINEL2_OBSERVED_AT.replace(tzinfo=timezone.utc)
+SENTINEL2_CROP_COL_OFF = _int_env("SENTINEL2_CROP_COL_OFF", 5000)
+SENTINEL2_CROP_ROW_OFF = _int_env("SENTINEL2_CROP_ROW_OFF", 5000)
+SENTINEL2_CROP_WIDTH = _validate_positive("SENTINEL2_CROP_WIDTH", _int_env("SENTINEL2_CROP_WIDTH", 1024))
+SENTINEL2_CROP_HEIGHT = _validate_positive("SENTINEL2_CROP_HEIGHT", _int_env("SENTINEL2_CROP_HEIGHT", 1024))
+SENTINEL2_FIXTURE_PATH = os.environ.get("SENTINEL2_FIXTURE_PATH") or None
+
 for name, value in (
     ("ELECTRICITY_INR_PER_KWH", ELECTRICITY_INR_PER_KWH),
     ("DOWNLINK_INR_PER_GB", DOWNLINK_INR_PER_GB),

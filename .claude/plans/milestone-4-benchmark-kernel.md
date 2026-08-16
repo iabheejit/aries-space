@@ -50,10 +50,17 @@ Run the same real SatNOGS payload-anomaly proxy against a terrestrial CPU target
 ## Out of Scope
 - Redis/RQ, asynchronous job dispatch, dead-runner recovery, or remote runner protocol
 - ONNX Runtime and trained/pretrained model files; the payload proxy does not represent the future ONNX telemetry-anomaly workload
-- Sentinel-2, watch-folder ingestion, ship detection, cloud masking, and NDVI workloads
+- Watch-folder ingestion, ship detection, cloud masking
 - Ground GPU, Jetson, `tegrastats`, external power measurement, or performance claims about real orbital hardware
 - React/Vite, Recharts, chart PNG export, report/PDF generation, or `/api/v1` redesign
 - Automated placement/routing beyond the evidence-backed recommendation text
+
+### Scope Amendment — 2026-08-16
+The DoT/TCOE application form (`Application Form.pdf`, §5) requires **TRL 5–8** ("validated prototype stage") to be eligible at all; below TRL 5 is not considered. The SatNOGS payload-anomaly-proxy workload (AC5 above) is a tiny JSON-metadata record whose derived output is *larger* than its input, so it can never produce a positive data-reduction/downlink-savings story — `break_even_downlink_inr_per_gb` and `recommendation` are structurally always `null` for that workload alone, which reads as "no working recommendation," i.e. below the TRL 5 bar.
+
+Per Abheejit's explicit instruction ("Finish M4's exit gate for real — a Sentinel-2-scale input producing an actual break_even_downlink_inr_per_gb number. This is now both the roadmap milestone and the TRL 5 eligibility gate, not two separate things."), Sentinel-2/NDVI was pulled forward from Milestone 4's original Out of Scope list and from the roadmap's Stage 4 ("Expand Evidence Inputs") into this milestone, narrowly: one real Sentinel-2 L2A red/NIR crop (AWS Open Data, no-sign-request), one deterministic NDVI-summary workload, added to the same generalized benchmark kernel (not a rewrite) via a small workload registry in `benchmarks.py`. Ship-detect, cloud-mask, watch-folder ingestion, and broader multi-scene evidence remain deferred to Stage 4 proper.
+
+**Result**: `sentinel2-ndvi-summary` on a real 3,346,740-byte crop produced DRF 6314.6×, `recommendation: "simulated_edge"`, `break_even_downlink_inr_per_gb: 0.0` (edge is cheaper than ground at any positive downlink price under the stated assumptions) — a genuine, non-degenerate, formula-traceable recommendation. See `EVIDENCE.md` for full run details. This is treated as the milestone's TRL 5 evidence; the original AC5/AC6 satnogs-proxy acceptance criteria are unchanged and still hold for that workload.
 
 ## Dependencies
 - Completed Milestone 3 PostgreSQL/MinIO data foundation and real captured SatNOGS fixture

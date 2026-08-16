@@ -7,6 +7,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,12 +28,7 @@ from services.api.aries_api.models import (
     Workload,
 )
 from services.api.aries_api.storage import ObjectStore
-from services.api.aries_api.workloads.satnogs_payload_proxy import (
-    DETECTOR_VERSION,
-    WORKLOAD_SLUG,
-    canonical_result_bytes,
-    run as run_payload_proxy,
-)
+from services.api.aries_api.workloads import satnogs_payload_proxy, sentinel2_ndvi_summary
 
 logger = logging.getLogger("aries.benchmarks")
 RESULTS_BUCKET = "results"
@@ -54,6 +50,50 @@ class BenchmarkUnavailableError(Exception):
 
 class BenchmarkNotFoundError(Exception):
     pass
+
+
+class WorkloadNotFoundError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class WorkloadSpec:
+    slug: str
+    name: str
+    detector_version: str
+    description: str
+    eligible_sources: frozenset[str]
+    run: Callable[[bytes], Any]
+    canonical_result_bytes: Callable[[Any], bytes]
+
+
+WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
+    satnogs_payload_proxy.WORKLOAD_SLUG: WorkloadSpec(
+        slug=satnogs_payload_proxy.WORKLOAD_SLUG,
+        name="SatNOGS Payload Anomaly Proxy",
+        detector_version=satnogs_payload_proxy.DETECTOR_VERSION,
+        description=(
+            "Deterministic payload/metadata completeness proxy; not decoded-frame "
+            "telemetry anomaly detection."
+        ),
+        eligible_sources=frozenset({"satnogs"}),
+        run=satnogs_payload_proxy.run,
+        canonical_result_bytes=satnogs_payload_proxy.canonical_result_bytes,
+    ),
+    sentinel2_ndvi_summary.WORKLOAD_SLUG: WorkloadSpec(
+        slug=sentinel2_ndvi_summary.WORKLOAD_SLUG,
+        name="Sentinel-2 NDVI Summary",
+        detector_version=sentinel2_ndvi_summary.DETECTOR_VERSION,
+        description=(
+            "Deterministic, model-free NDVI summary statistics computed from a real "
+            "Sentinel-2 L2A red/NIR crop."
+        ),
+        eligible_sources=frozenset({"sentinel2"}),
+        run=sentinel2_ndvi_summary.run,
+        canonical_result_bytes=sentinel2_ndvi_summary.canonical_result_bytes,
+    ),
+}
+DEFAULT_WORKLOAD_SLUG = satnogs_payload_proxy.WORKLOAD_SLUG
 
 
 @dataclass(frozen=True)
@@ -94,26 +134,22 @@ def assumptions_snapshot() -> dict:
     }
 
 
-def _seed_catalog(session: Session) -> tuple[Workload, list[ExecutionTarget]]:
-    workload = session.scalar(select(Workload).where(Workload.slug == WORKLOAD_SLUG))
+def _seed_catalog(
+    session: Session, spec: WorkloadSpec
+) -> tuple[Workload, list[ExecutionTarget]]:
+    workload = session.scalar(select(Workload).where(Workload.slug == spec.slug))
     if workload is None:
         workload = Workload(
-            slug=WORKLOAD_SLUG,
-            name="SatNOGS Payload Anomaly Proxy",
-            detector_version=DETECTOR_VERSION,
-            description=(
-                "Deterministic payload/metadata completeness proxy; not decoded-frame "
-                "telemetry anomaly detection."
-            ),
+            slug=spec.slug,
+            name=spec.name,
+            detector_version=spec.detector_version,
+            description=spec.description,
         )
         session.add(workload)
     else:
-        workload.name = "SatNOGS Payload Anomaly Proxy"
-        workload.detector_version = DETECTOR_VERSION
-        workload.description = (
-            "Deterministic payload/metadata completeness proxy; not decoded-frame "
-            "telemetry anomaly detection."
-        )
+        workload.name = spec.name
+        workload.detector_version = spec.detector_version
+        workload.description = spec.description
 
     target_specs = (
         {
@@ -163,26 +199,34 @@ def _result_bytes(core: dict, execution: dict) -> tuple[bytes, dict]:
     raise BenchmarkUnavailableError("Result size did not stabilize")
 
 
+def _sample_iterations_for(spec: WorkloadSpec) -> int:
+    if spec.slug == sentinel2_ndvi_summary.WORKLOAD_SLUG:
+        return config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS
+    return config.BENCHMARK_SAMPLE_ITERATIONS
+
+
 def _execute_target(
     target: ExecutionTarget,
     payload: bytes,
+    spec: WorkloadSpec,
     ground_baseline_ms: float | None = None,
 ) -> tuple[bytes, dict, float, float, int]:
     if target.is_simulated:
         if ground_baseline_ms is None:
             raise BenchmarkUnavailableError("Simulated edge requires ground baseline")
-        proxy = run_payload_proxy(payload)
+        proxy = spec.run(payload)
         inference_ms = ground_baseline_ms * target.slowdown_factor
         wall_ms = inference_ms
         timing_basis = "modeled_from_ground_median"
     else:
-        for _ in range(min(100, config.BENCHMARK_SAMPLE_ITERATIONS)):
-            run_payload_proxy(payload)
+        iterations = _sample_iterations_for(spec)
+        for _ in range(min(100, iterations)):
+            spec.run(payload)
         samples = []
         proxy = None
-        for _ in range(config.BENCHMARK_SAMPLE_ITERATIONS):
+        for _ in range(iterations):
             started = time.perf_counter_ns()
-            proxy = run_payload_proxy(payload)
+            proxy = spec.run(payload)
             samples.append((time.perf_counter_ns() - started) / 1_000_000)
         inference_ms = max(statistics.median(samples), 0.001)
         wall_ms = inference_ms
@@ -199,7 +243,7 @@ def _execute_target(
         "inference_ms": round(inference_ms, 6),
         "avg_watts": target.avg_watts,
     }
-    analytical_output_bytes = len(canonical_result_bytes(proxy))
+    analytical_output_bytes = len(spec.canonical_result_bytes(proxy))
     return (
         *_result_bytes(proxy.payload(), execution),
         wall_ms,
@@ -211,10 +255,11 @@ def _execute_target(
 def _execute_target_bounded(
     target: ExecutionTarget,
     payload: bytes,
+    spec: WorkloadSpec,
     ground_baseline_ms: float | None = None,
 ) -> tuple[bytes, dict, float, float, int]:
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="benchmark-target") as executor:
-        future = executor.submit(_execute_target, target, payload, ground_baseline_ms)
+        future = executor.submit(_execute_target, target, payload, spec, ground_baseline_ms)
         try:
             return future.result(timeout=config.BENCHMARK_TIMEOUT_SECONDS)
         except FutureTimeoutError as exc:
@@ -225,18 +270,29 @@ def _execute_target_bounded(
 
 
 def run_benchmark_pair(
-    session: Session, store: ObjectStore, dataset_id: int
+    session: Session,
+    store: ObjectStore,
+    dataset_id: int,
+    workload_slug: str = DEFAULT_WORKLOAD_SLUG,
 ) -> BenchmarkPair:
+    spec = WORKLOAD_REGISTRY.get(workload_slug)
+    if spec is None:
+        raise WorkloadNotFoundError(f"Unknown workload '{workload_slug}'")
+
     dataset = session.get(Dataset, dataset_id)
     if dataset is None:
         raise DatasetNotFoundError(f"Dataset {dataset_id} was not found")
-    observation = session.scalar(
-        select(Observation).where(Observation.dataset_id == dataset.id)
-    )
-    if dataset.source != "satnogs" or observation is None:
+    if dataset.source not in spec.eligible_sources:
         raise DatasetIneligibleError(
-            "Dataset must be a SatNOGS dataset with a linked observation"
+            f"Dataset source '{dataset.source}' is not eligible for workload "
+            f"'{spec.slug}' (eligible: {sorted(spec.eligible_sources)})"
         )
+    if dataset.source == "satnogs":
+        observation = session.scalar(
+            select(Observation).where(Observation.dataset_id == dataset.id)
+        )
+        if observation is None:
+            raise DatasetIneligibleError("SatNOGS dataset has no linked observation")
 
     try:
         raw_payload = store.get(config.MINIO_RAW_BUCKET, dataset.object_key)
@@ -248,7 +304,7 @@ def run_benchmark_pair(
     correlation_id = str(uuid.uuid4())
     created_keys: list[str] = []
     try:
-        workload, targets = _seed_catalog(session)
+        workload, targets = _seed_catalog(session, spec)
         pair = BenchmarkPair(
             correlation_id=correlation_id,
             dataset_id=dataset.id,
@@ -275,7 +331,7 @@ def run_benchmark_pair(
                 inference_ms,
                 analytical_output_bytes,
             ) = _execute_target_bounded(
-                target, raw_payload, ground_baseline_ms
+                target, raw_payload, spec, ground_baseline_ms
             )
             if target.slug == "ground-cpu":
                 ground_baseline_ms = wall_ms
@@ -379,14 +435,24 @@ def run_benchmark_pair(
         raise BenchmarkUnavailableError("Benchmark pair failed atomically") from exc
 
 
-def latest_completed_pair(session: Session, workload_slug: str) -> BenchmarkPair:
-    pair = session.scalar(
+def latest_completed_pair(
+    session: Session, workload_slug: str | None = None
+) -> BenchmarkPair:
+    """Most recent completed pair. Pass workload_slug to filter to one
+    workload, or None for the most recent pair across all workloads (used
+    by the dashboard's single headline benchmark slot).
+    """
+    query = (
         select(BenchmarkPair)
-        .join(Workload, Workload.id == BenchmarkPair.workload_id)
-        .where(Workload.slug == workload_slug, BenchmarkPair.status == "completed")
+        .where(BenchmarkPair.status == "completed")
         .order_by(BenchmarkPair.completed_at.desc(), BenchmarkPair.id.desc())
         .limit(1)
     )
+    if workload_slug is not None:
+        query = query.join(Workload, Workload.id == BenchmarkPair.workload_id).where(
+            Workload.slug == workload_slug
+        )
+    pair = session.scalar(query)
     if pair is None:
         raise BenchmarkNotFoundError("No completed benchmark pair found")
     return pair
