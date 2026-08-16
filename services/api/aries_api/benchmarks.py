@@ -27,8 +27,18 @@ from services.api.aries_api.models import (
     Observation,
     Workload,
 )
+from services.api.aries_api.sentinel2_ingest import (
+    AOI_COASTAL_PORT,
+    AOI_GHRCE_AGRICULTURAL,
+    AOI_NAMES,
+)
 from services.api.aries_api.storage import ObjectStore
-from services.api.aries_api.workloads import satnogs_payload_proxy, sentinel2_ndvi_summary
+from services.api.aries_api.workloads import (
+    cloud_mask,
+    satnogs_payload_proxy,
+    sentinel2_ndvi_summary,
+    ship_detect,
+)
 
 logger = logging.getLogger("aries.benchmarks")
 RESULTS_BUCKET = "results"
@@ -66,6 +76,10 @@ class WorkloadSpec:
     run: Callable[[bytes], Any]
     canonical_result_bytes: Callable[[Any], bytes]
     sample_iterations: int
+    # None = any AOI is eligible for this source (the default). When set,
+    # a dataset's aoi_id must be a member -- and a dataset with aoi_id=None
+    # is never eligible against a non-None set (fails closed).
+    eligible_aoi_ids: frozenset[int] | None = None
 
 
 WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
@@ -91,11 +105,41 @@ WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
             "Sentinel-2 L2A red/NIR crop."
         ),
         eligible_sources=frozenset({"sentinel2"}),
+        eligible_aoi_ids=frozenset({AOI_GHRCE_AGRICULTURAL}),
         run=sentinel2_ndvi_summary.run,
         canonical_result_bytes=sentinel2_ndvi_summary.canonical_result_bytes,
         # Raster workloads cost orders of magnitude more per call than the
         # tiny JSON-metadata SatNOGS proxy; a much smaller sample count
         # keeps the ground-cpu median measurement inside the target timeout.
+        sample_iterations=config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS,
+    ),
+    cloud_mask.WORKLOAD_SLUG: WorkloadSpec(
+        slug=cloud_mask.WORKLOAD_SLUG,
+        name="Cloud Mask",
+        detector_version=cloud_mask.DETECTOR_VERSION,
+        description=(
+            "Deterministic red+NIR joint-brightness cloud-fraction proxy, computed "
+            "from raw Sentinel-2 bands (not the SCL shortcut)."
+        ),
+        eligible_sources=frozenset({"sentinel2"}),
+        eligible_aoi_ids=frozenset({AOI_GHRCE_AGRICULTURAL}),
+        run=cloud_mask.run,
+        canonical_result_bytes=cloud_mask.canonical_result_bytes,
+        sample_iterations=config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS,
+    ),
+    ship_detect.WORKLOAD_SLUG: WorkloadSpec(
+        slug=ship_detect.WORKLOAD_SLUG,
+        name="Ship Detect",
+        detector_version=ship_detect.DETECTOR_VERSION,
+        description=(
+            "Deterministic bright-pixel-cluster count against a water background in "
+            "a single Sentinel-2 NIR band; a statistical proxy, not a validated "
+            "vessel-detection model."
+        ),
+        eligible_sources=frozenset({"sentinel2"}),
+        eligible_aoi_ids=frozenset({AOI_COASTAL_PORT}),
+        run=ship_detect.run,
+        canonical_result_bytes=ship_detect.canonical_result_bytes,
         sample_iterations=config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS,
     ),
 }
@@ -286,6 +330,13 @@ def run_benchmark_pair(
         raise DatasetIneligibleError(
             f"Dataset source '{dataset.source}' is not eligible for workload "
             f"'{spec.slug}' (eligible: {sorted(spec.eligible_sources)})"
+        )
+    if spec.eligible_aoi_ids is not None and dataset.aoi_id not in spec.eligible_aoi_ids:
+        # Fails closed: dataset.aoi_id is None (or simply not in the set)
+        # is always ineligible when the workload restricts to specific AOIs.
+        raise DatasetIneligibleError(
+            f"Dataset AOI '{dataset.aoi_id}' is not eligible for workload "
+            f"'{spec.slug}' (eligible: {sorted(spec.eligible_aoi_ids)})"
         )
     if dataset.source == "satnogs":
         observation = session.scalar(
@@ -485,6 +536,7 @@ def serialize_pair(session: Session, pair: BenchmarkPair) -> dict:
             "source": dataset.source,
             "external_id": dataset.external_id,
             "sha256": pair.dataset_sha256,
+            "aoi_name": AOI_NAMES.get(dataset.aoi_id) if dataset.aoi_id else None,
         },
         "assumptions": pair.assumptions,
         "recommendation": pair.recommendation,

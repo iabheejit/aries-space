@@ -147,6 +147,39 @@ def main() -> int:
     for run in s2_benchmark["runs"]:
         assert run["data_reduction_factor"] > 1
 
+    # cloud-mask: same agricultural dataset, different workload -- proves
+    # a dataset can be shared across eligible workloads without re-ingesting.
+    cloud_benchmark_status, cloud_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=cloud-mask",
+        method="POST",
+    )
+    assert cloud_benchmark_status == 201
+    assert all("cloud_fraction" in run["result"] for run in cloud_benchmark["runs"])
+
+    # ship-detect: second AOI (coastal), proves AOI-scoped eligibility works
+    # end-to-end, not just in unit tests.
+    coastal_created_status, coastal_created = _json_request(
+        "/api/ingest/sentinel2?aoi_id=2", method="POST"
+    )
+    assert coastal_created_status in {200, 201}
+    ship_benchmark_status, ship_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={coastal_created['dataset_id']}&workload=ship-detect",
+        method="POST",
+    )
+    assert ship_benchmark_status == 201
+    assert all("bright_pixel_count" in run["result"] for run in ship_benchmark["runs"])
+
+    # Cross-AOI eligibility must still fail: ship-detect against the
+    # agricultural dataset, not just in unit tests.
+    try:
+        _json_request(
+            f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=ship-detect",
+            method="POST",
+        )
+        raise AssertionError("expected cross-AOI benchmark request to be rejected")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 422
+
     with psycopg.connect(PSYCOPG_DATABASE_URL) as connection:
         migration = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
         dataset = connection.execute(
@@ -159,14 +192,20 @@ def main() -> int:
             (int(created["external_id"]),),
         ).fetchone()
         sentinel2_dataset = connection.execute(
-            """SELECT count(*) FROM datasets
+            """SELECT count(*), min(aoi_id) FROM datasets
                WHERE source = 'sentinel2' AND external_id = %s""",
             (s2_created["external_id"],),
+        ).fetchone()
+        coastal_dataset = connection.execute(
+            """SELECT count(*), min(aoi_id) FROM datasets
+               WHERE source = 'sentinel2' AND external_id = %s""",
+            (coastal_created["external_id"],),
         ).fetchone()
     assert migration == "0002_benchmark_kernel"
     assert dataset[0] == observation_count[0] == 1
     assert dataset[1:] == (created["object_key"], created["sha256"], created["size_bytes"])
-    assert sentinel2_dataset[0] == 1
+    assert sentinel2_dataset == (1, 1)
+    assert coastal_dataset == (1, 2)
 
     minio = Minio(
         "127.0.0.1:9000",
@@ -180,10 +219,14 @@ def main() -> int:
     raw_keys = {item.object_name for item in raw_objects}
     assert created["object_key"] in raw_keys
     assert s2_created["object_key"] in raw_keys
+    assert coastal_created["object_key"] in raw_keys
     result_objects = list(minio.list_objects("results", recursive=True))
-    expected_result_keys = {run["result_object_key"] for run in benchmark["runs"]} | {
-        run["result_object_key"] for run in s2_benchmark["runs"]
-    }
+    expected_result_keys = (
+        {run["result_object_key"] for run in benchmark["runs"]}
+        | {run["result_object_key"] for run in s2_benchmark["runs"]}
+        | {run["result_object_key"] for run in cloud_benchmark["runs"]}
+        | {run["result_object_key"] for run in ship_benchmark["runs"]}
+    )
     assert expected_result_keys <= {item.object_name for item in result_objects}
     with closing(minio.get_object("raw", created["object_key"])) as response:
         payload = response.read()
@@ -220,6 +263,16 @@ def main() -> int:
     )
     assert s2_latest_status == 200
     assert s2_latest["pair_id"] == s2_benchmark["pair_id"]
+    cloud_latest_status, cloud_latest = _json_request(
+        "/api/benchmarks/latest?workload=cloud-mask"
+    )
+    assert cloud_latest_status == 200
+    assert cloud_latest["pair_id"] == cloud_benchmark["pair_id"]
+    ship_latest_status, ship_latest = _json_request(
+        "/api/benchmarks/latest?workload=ship-detect"
+    )
+    assert ship_latest_status == 200
+    assert ship_latest["pair_id"] == ship_benchmark["pair_id"]
     print(
         json.dumps(
             {
@@ -227,6 +280,8 @@ def main() -> int:
                 "migration": migration,
                 "benchmark_pair_id": benchmark["pair_id"],
                 "sentinel2_benchmark_pair_id": s2_benchmark["pair_id"],
+                "cloud_mask_benchmark_pair_id": cloud_benchmark["pair_id"],
+                "ship_detect_benchmark_pair_id": ship_benchmark["pair_id"],
                 **created,
             },
             sort_keys=True,

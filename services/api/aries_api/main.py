@@ -34,7 +34,11 @@ from services.api.aries_api.ingest import (
 from services.api.aries_api.models import Observation
 from services.api.aries_api.predict import compute_passes
 from services.api.aries_api.scheduler import start_scheduler, stop_scheduler
-from services.api.aries_api.sentinel2_ingest import fetch_sentinel2_crop, ingest_sentinel2_crop
+from services.api.aries_api.sentinel2_ingest import (
+    AOI_GHRCE_AGRICULTURAL,
+    fetch_sentinel2_crop,
+    ingest_sentinel2_crop,
+)
 from services.api.aries_api.status import compute_status
 from services.api.aries_api.storage import ObjectStore
 from services.api.aries_api.tle import TLEUnavailableError, get_tle
@@ -174,15 +178,18 @@ def api_ingest_satnogs(
 @app.post("/api/ingest/sentinel2")
 def api_ingest_sentinel2(
     response: Response,
+    aoi_id: int = Query(AOI_GHRCE_AGRICULTURAL, gt=0),
     session: Session = Depends(get_session),
     store: ObjectStore = Depends(get_store),
     _: None = Depends(require_admin),
 ):
     try:
-        payload = fetch_sentinel2_crop()
-        result = ingest_sentinel2_crop(session, store, payload)
+        payload = fetch_sentinel2_crop(aoi_id)
+        result = ingest_sentinel2_crop(session, store, payload, aoi_id)
     except IngestUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown aoi_id {aoi_id}") from exc
     response.status_code = 201 if result.created else 200
     return {"dataset_id": result.dataset_id, "external_id": result.external_id, "object_key": result.object_key, "size_bytes": result.size_bytes, "sha256": result.sha256}
 
