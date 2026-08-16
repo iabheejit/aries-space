@@ -40,6 +40,8 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: python -m pip install --requirement requirements-dev.txt
+      - run: python -m pip install playwright==1.62.0
+      - run: python -m playwright install --with-deps chromium
       - name: Validate Compose and build image
         run: |
           docker compose config --quiet
@@ -66,6 +68,18 @@ jobs:
             python -m pytest -q
       - name: Verify migrations, checksums, idempotency, and persistence
         run: python scripts/compose_smoke.py
+      - name: Dashboard screenshots and honesty-label assertions (Playwright)
+        env:
+          ARIES_DASHBOARD_BASE_URL: http://127.0.0.1:8000
+          ARIES_SCREENSHOT_DIR: dashboard-screenshots
+        run: python -m pytest tests/test_dashboard_playwright.py -q
+      - name: Upload dashboard screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-screenshots
+          path: dashboard-screenshots/
+          if-no-files-found: ignore
       - name: Show logs on failure
         if: failure()
         run: docker compose logs

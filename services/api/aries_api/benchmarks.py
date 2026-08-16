@@ -65,6 +65,7 @@ class WorkloadSpec:
     eligible_sources: frozenset[str]
     run: Callable[[bytes], Any]
     canonical_result_bytes: Callable[[Any], bytes]
+    sample_iterations: int
 
 
 WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
@@ -79,6 +80,7 @@ WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
         eligible_sources=frozenset({"satnogs"}),
         run=satnogs_payload_proxy.run,
         canonical_result_bytes=satnogs_payload_proxy.canonical_result_bytes,
+        sample_iterations=config.BENCHMARK_SAMPLE_ITERATIONS,
     ),
     sentinel2_ndvi_summary.WORKLOAD_SLUG: WorkloadSpec(
         slug=sentinel2_ndvi_summary.WORKLOAD_SLUG,
@@ -91,6 +93,10 @@ WORKLOAD_REGISTRY: dict[str, WorkloadSpec] = {
         eligible_sources=frozenset({"sentinel2"}),
         run=sentinel2_ndvi_summary.run,
         canonical_result_bytes=sentinel2_ndvi_summary.canonical_result_bytes,
+        # Raster workloads cost orders of magnitude more per call than the
+        # tiny JSON-metadata SatNOGS proxy; a much smaller sample count
+        # keeps the ground-cpu median measurement inside the target timeout.
+        sample_iterations=config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS,
     ),
 }
 DEFAULT_WORKLOAD_SLUG = satnogs_payload_proxy.WORKLOAD_SLUG
@@ -199,12 +205,6 @@ def _result_bytes(core: dict, execution: dict) -> tuple[bytes, dict]:
     raise BenchmarkUnavailableError("Result size did not stabilize")
 
 
-def _sample_iterations_for(spec: WorkloadSpec) -> int:
-    if spec.slug == sentinel2_ndvi_summary.WORKLOAD_SLUG:
-        return config.SENTINEL2_BENCHMARK_SAMPLE_ITERATIONS
-    return config.BENCHMARK_SAMPLE_ITERATIONS
-
-
 def _execute_target(
     target: ExecutionTarget,
     payload: bytes,
@@ -219,7 +219,7 @@ def _execute_target(
         wall_ms = inference_ms
         timing_basis = "modeled_from_ground_median"
     else:
-        iterations = _sample_iterations_for(spec)
+        iterations = spec.sample_iterations
         for _ in range(min(100, iterations)):
             spec.run(payload)
         samples = []

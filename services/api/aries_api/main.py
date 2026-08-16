@@ -210,7 +210,7 @@ def api_run_benchmark(
 
 @app.get("/api/benchmarks/latest")
 def api_latest_benchmark(
-    workload: str = Query("satnogs-payload-anomaly-proxy"),
+    workload: str = Query(DEFAULT_WORKLOAD_SLUG),
     session: Session = Depends(get_session),
 ):
     try:
