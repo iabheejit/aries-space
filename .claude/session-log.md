@@ -3,6 +3,27 @@
 <!-- Format: ## {date} | Milestone {N} | {title} -->
 <!-- What was done, what's next, any RESUME markers -->
 
+## 2026-08-16 | Milestone 5 | Roadmap Stage 4 exit gate closed: four real workloads, two Sentinel-2 scenes
+**Done**:
+- Drafted Milestone 5 plan (roadmap Stage 4: Expand Evidence Inputs); Vikram REFINE caught a real structural gap (proposed AOI-selection mechanism couldn't actually distinguish two scenes sharing one data source) plus a sizing concern; fixed both (AOI-scoped `eligible_aoi_ids` giving `Dataset.aoi_id` real meaning, no migration needed; watch-folder ingestion cut to a follow-on milestone) → READY
+- Found and validated a second real Sentinel-2 scene (Mumbai/JNPT coastal water, S2A_43QBA_20260428_0_L2A, 2.52% cloud) via live STAC search + rasterio windowed reads, distinct from the existing GHRCE agricultural scene
+- Built two new deterministic, model-free workloads: `cloud-mask` (red+NIR joint-brightness threshold from raw bands) and `ship-detect` (bright-pixel-cluster count against water, grid-cell candidate regions — no scipy needed)
+- Generalized `sentinel2_ingest.py` from one hardcoded scene to a small static `SceneConfig` registry keyed by AOI id; extended `WorkloadSpec` with `eligible_aoi_ids`, checked additively (fails closed) in `run_benchmark_pair`
+- Live-verified end-to-end against a freshly reset Compose stack (`down --volumes`, live AWS fetches, both Sentinel-2 fixtures disabled): all four workload×dataset combinations produced real, checksum-verified, honestly-labeled results; cross-AOI rejection (`ship-detect` against the agricultural dataset) confirmed live as a real 422, not just unit-tested
+- Extended `compose_smoke.py` and CI to cover all four combinations plus the cross-AOI rejection
+- Ran the 7-specialist completion audit: no blockers. Fixed both real findings same-session — Rajan's untested fail-closed AOI path (added a direct test) and Divya's opaque dataset-ID dashboard copy (added human-readable `AOI_NAMES`, dashboard now says "Mumbai/JNPT coastal water" instead of a raw scene ID)
+- 89 tests passing, CI green (test 3.11/3.13 + container-smoke with Playwright), merged `milestone/5-expand-evidence-inputs` to `main`
+- Full EVIDENCE.md entry with real live figures for both new workloads (DRF 5750.4× cloud-mask, DRF 669.7× ship-detect, both `simulated_edge` recommendation at ₹0.00/GB break-even)
+
+**Next**:
+- Stage 5 (Demo Surface / React dashboard, benchmark matrix view) — deferred by design, not urgent
+- Watch-folder ingestion for "eventual GHRCE output" — deferred to a follow-on milestone
+- Founder-side grant blockers unchanged and now the actual critical path: entity registration (DPIIT/Udyam), 3-years audited financials, GHRCE signed Letter of Consent/Intent, itemized budget, confirm document format TCOE wants
+
+**Decisions**: Kept `ship-detect`/`cloud-mask` deterministic and model-free (no ONNX), consistent with the project's established discipline of proving the mechanism before adding model complexity — flagged explicitly in the plan as a scope decision rather than assumed silently.
+
+**Resume**: <!-- RESUME: Milestone 5 is COMPLETED and merged to main. Roadmap Stage 4 exit gate is closed. Next session: propose Milestone 6 scope (Stage 5 Demo Surface, or pivot to grant-paperwork support) with Abheejit. -->
+
 ## 2026-08-16 | Milestone 4 | TRL 5 gate reached; git remote + M2 resolution; project identity unified
 **Done**:
 - Read the actual DoT/TCOE application form + program booklet (supplied by Abheejit) — found the hard gate: TRL 5-8 required to be eligible at all; project was TRL 4 ("pre-benchmark") at the time
