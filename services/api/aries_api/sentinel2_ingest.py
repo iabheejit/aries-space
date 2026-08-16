@@ -25,6 +25,15 @@ logger = logging.getLogger("aries.sentinel2_ingest")
 AOI_GHRCE_AGRICULTURAL = 1  # Nagpur agricultural cropland, GHRCE region
 AOI_COASTAL_PORT = 2  # Mumbai/JNPT coastal water, ship-detect target
 
+# Human-readable names, independent of the live-config-dependent
+# SceneConfig registry below -- for display (dashboard, API) where a
+# lightweight lookup is enough and pulling in the full scene config
+# (with its required env vars) would be overkill.
+AOI_NAMES: dict[int, str] = {
+    AOI_GHRCE_AGRICULTURAL: "GHRCE agricultural region (Nagpur)",
+    AOI_COASTAL_PORT: "Mumbai/JNPT coastal water",
+}
+
 
 @dataclass(frozen=True)
 class SceneConfig:

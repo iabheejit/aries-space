@@ -296,6 +296,43 @@ def test_ndvi_summary_rejects_coastal_aoi(multi_aoi_benchmark_context):
         )
 
 
+def test_aoi_check_fails_closed_when_dataset_aoi_id_is_none(
+    multi_aoi_benchmark_context,
+):
+    # Rajan's M5 audit: the source check alone can mask the AOI check, since
+    # every ingested dataset has a real aoi_id. Exercise the AOI guard
+    # directly with a dataset whose source matches but aoi_id is None --
+    # this must still be rejected, not silently treated as eligible.
+    session, store, agricultural_id, _coastal_id = multi_aoi_benchmark_context
+    agricultural = session.get(Dataset, agricultural_id)
+
+    orphaned = Dataset(
+        source="sentinel2",
+        external_id="no-aoi-scene",
+        observed_at=agricultural.observed_at,
+        size_bytes=agricultural.size_bytes,
+        object_key="sentinel2/no-aoi-scene.tif",
+        sha256=agricultural.sha256,
+        ingested_at=agricultural.ingested_at,
+        aoi_id=None,
+        # The Dataset schema requires satellite_norad_id OR aoi_id to be
+        # set; a dummy NORAD id satisfies that constraint for this
+        # synthetic row without giving it a real (and thus AOI-eligible)
+        # aoi_id -- the whole point of this test.
+        satellite_norad_id=0,
+    )
+    session.add(orphaned)
+    session.commit()
+    store.objects[("raw", orphaned.object_key)] = store.objects[
+        ("raw", agricultural.object_key)
+    ]
+
+    with pytest.raises(DatasetIneligibleError):
+        run_benchmark_pair(
+            session, store, orphaned.id, workload_slug="sentinel2-ndvi-summary"
+        )
+
+
 def test_latest_pair_orders_by_completed_pair(benchmark_context):
     session, store, dataset_id = benchmark_context
     first = run_benchmark_pair(session, store, dataset_id)

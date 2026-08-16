@@ -27,7 +27,11 @@ from services.api.aries_api.models import (
     Observation,
     Workload,
 )
-from services.api.aries_api.sentinel2_ingest import AOI_COASTAL_PORT, AOI_GHRCE_AGRICULTURAL
+from services.api.aries_api.sentinel2_ingest import (
+    AOI_COASTAL_PORT,
+    AOI_GHRCE_AGRICULTURAL,
+    AOI_NAMES,
+)
 from services.api.aries_api.storage import ObjectStore
 from services.api.aries_api.workloads import (
     cloud_mask,
@@ -532,6 +536,7 @@ def serialize_pair(session: Session, pair: BenchmarkPair) -> dict:
             "source": dataset.source,
             "external_id": dataset.external_id,
             "sha256": pair.dataset_sha256,
+            "aoi_name": AOI_NAMES.get(dataset.aoi_id) if dataset.aoi_id else None,
         },
         "assumptions": pair.assumptions,
         "recommendation": pair.recommendation,
