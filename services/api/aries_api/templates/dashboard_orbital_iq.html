@@ -1,0 +1,712 @@
+{#
+  Orbital IQ — faithful layout replication of the founder-shared mockup.
+  Every panel is wired to live Aries data (mission health, orbital positions,
+  edge economics, and the workload-matrix panels: coverage, aggregate
+  economics, run log, run detail). The one exception is the sensor-fusion
+  layer itself (SAR/AIS vessel detection) -- Aries has no such feed, and that
+  stays badged CONCEPT rather than faked.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Orbital IQ &middot; Aries-01</title>
+<style>
+  :root{
+    --bg:#060b14; --panel:#0b1422; --panel2:#0e1a2b; --line:#18263c; --line2:#22344f;
+    --text:#dce7f5; --muted:#6b829f; --dim:#43587a;
+    --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  a{color:var(--cyan);}
+  .lbl{font:600 .58rem var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);}
+  .val{font:600 1.02rem var(--mono);color:var(--text);}
+  .val.cyan{color:var(--cyan);} .val.green{color:var(--green);}
+  .val.amber{color:var(--amber);} .val.red{color:var(--red);}
+
+  .shell{display:flex;min-height:100vh;}
+  .rail{width:186px;flex:0 0 186px;background:#070d18;border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:14px 0;}
+  .brand{display:flex;gap:9px;align-items:center;padding:0 16px 16px;}
+  .brand .ring{width:17px;height:17px;border-radius:50%;border:2px solid var(--cyan);flex:none;}
+  .brand b{display:block;font:700 .82rem var(--mono);letter-spacing:.08em;}
+  .brand span{display:block;font:600 .5rem var(--mono);letter-spacing:.11em;color:var(--dim);}
+  .nav-item{display:block;padding:8px 16px;font:600 .66rem var(--mono);letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);border-left:2px solid transparent;
+    text-decoration:none;cursor:pointer;}
+  .nav-item:hover{color:var(--text);}
+  .nav-item.active{color:var(--cyan);background:rgba(34,211,238,.07);border-left-color:var(--cyan);}
+  .nav-item.disabled{color:var(--dim);cursor:not-allowed;}
+  .nav-item.disabled:hover{color:var(--dim);}
+  .rail-note{margin-top:auto;padding:12px 16px 0;font-size:.62rem;line-height:1.5;
+    color:var(--dim);border-top:1px solid var(--line);}
+
+  .content{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .topbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;
+    padding:12px 18px;border-bottom:1px solid var(--line);background:#070e19;}
+  .topbar h1{margin:0;font:700 1.32rem var(--mono);letter-spacing:.02em;}
+  .topbar h1 em{font-style:normal;color:var(--dim);font-weight:400;}
+  .orbit-facts{display:flex;flex-wrap:wrap;gap:14px;margin-top:5px;
+    font:600 .6rem var(--mono);letter-spacing:.05em;color:var(--muted);}
+  .orbit-facts b{color:var(--cyan);font-weight:600;}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:3px;
+    font:700 .56rem var(--mono);letter-spacing:.08em;border:1px solid;}
+  .chip.ok{color:var(--green);border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.08);}
+  .chip.warn{color:var(--amber);border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.08);}
+  .chip.concept{color:var(--violet);border-color:rgba(167,139,250,.5);background:rgba(167,139,250,.09);}
+  .chip.live{color:var(--cyan);border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.08);}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .dot.pulse{animation:pulse 1.9s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+  .topbar-right{display:flex;align-items:center;gap:12px;font:600 .62rem var(--mono);
+    letter-spacing:.05em;color:var(--muted);text-align:right;}
+  .qa{padding:6px 12px;border:1px solid var(--line2);border-radius:4px;color:var(--muted);
+    font:700 .58rem var(--mono);letter-spacing:.08em;}
+
+  main{padding:14px 18px 22px;display:flex;flex-direction:column;gap:14px;}
+  .disclosure{margin:0;padding:9px 12px;border:1px solid rgba(167,139,250,.28);border-radius:5px;
+    background:rgba(167,139,250,.05);color:var(--muted);font-size:.73rem;line-height:1.55;}
+  .row{display:grid;gap:14px;}
+  a.panel.teaser{text-decoration:none;transition:border-color .15s;}
+  a.panel.teaser:hover{border-color:var(--cyan);}
+  .teaser-body{margin:0;padding:12px 13px;font-size:.72rem;line-height:1.55;color:var(--muted);}
+  .row.r1{grid-template-columns:1.32fr 1fr;}
+  .row.r2{grid-template-columns:1.55fr 1fr;}
+  .row.r3{grid-template-columns:1fr 1fr 1fr;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:9px 13px;border-bottom:1px solid var(--line);background:var(--panel2);}
+  .panel-head h2{margin:0;font:700 .68rem var(--mono);letter-spacing:.09em;text-transform:uppercase;}
+  .panel-head h2 em{font-style:normal;color:var(--dim);font-weight:400;}
+  .panel-head .src{font:600 .56rem var(--mono);letter-spacing:.05em;color:var(--dim);text-transform:uppercase;}
+  .panel-body{padding:12px 13px;}
+  .concept-bar{display:flex;align-items:center;gap:8px;padding:6px 13px;
+    background:rgba(167,139,250,.07);border-bottom:1px solid rgba(167,139,250,.2);
+    color:var(--violet);font:600 .58rem var(--mono);letter-spacing:.045em;}
+
+  .quad{display:grid;grid-template-columns:repeat(4,1fr);gap:0;}
+  .panel > .quad{flex:1;}
+  .panel > .table-wrap{flex:1;}
+  .quad > div{padding:12px 13px;border-right:1px solid var(--line);min-width:0;}
+  .quad > div:last-child{border-right:0;}
+  .quad h3{margin:0 0 9px;font:700 .56rem var(--mono);letter-spacing:.09em;
+    text-transform:uppercase;color:var(--cyan);}
+  .kv{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;
+    font:600 .63rem var(--mono);color:var(--muted);}
+  .kv b{color:var(--text);font-weight:600;}
+  .bar{position:relative;flex:1;height:4px;border-radius:2px;background:#132038;margin:0 8px;}
+  .bar i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--cyan);}
+  .bar i.warm{background:var(--amber);}
+  .countdown{font:700 1.62rem var(--mono);color:var(--cyan);letter-spacing:.02em;margin:2px 0 4px;}
+
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;padding:7px 9px;font:700 .55rem var(--mono);letter-spacing:.08em;
+    text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:7px 9px;border-bottom:1px solid rgba(24,38,60,.6);font-size:.72rem;vertical-align:top;}
+  td.num{font-family:var(--mono);text-align:right;white-space:nowrap;}
+  tr.total td{font-weight:700;color:var(--cyan);border-top:1px solid var(--line2);}
+  .table-wrap{overflow-x:auto;}
+  .flag{font:600 .55rem var(--mono);letter-spacing:.06em;color:var(--violet);text-transform:uppercase;}
+  .drf-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+    padding:12px 13px;border-bottom:1px solid var(--line);}
+  .drf{font:700 2rem var(--mono);color:var(--cyan);line-height:1;}
+  .rec{font:700 1.02rem var(--mono);letter-spacing:.05em;}
+  .rec.ground{color:var(--amber);} .rec.edge{color:var(--cyan);} .rec.none{color:var(--muted);}
+  .sens{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);}
+  .sens > div{padding:9px 12px;border-right:1px solid var(--line);}
+  .sens > div:last-child{border-right:0;}
+  .badge{display:inline-block;padding:2px 6px;border-radius:3px;border:1px solid;
+    font:700 .52rem var(--mono);letter-spacing:.06em;margin:2px 4px 0 0;}
+  .badge.sim{color:var(--red);border-color:rgba(248,113,113,.45);}
+  .badge.meas{color:var(--green);border-color:rgba(52,211,153,.45);}
+  .badge.est{color:var(--amber);border-color:rgba(251,191,36,.45);}
+  .note{margin:0;padding:10px 13px;border-top:1px solid var(--line);
+    font-size:.71rem;color:var(--muted);line-height:1.5;}
+  .note strong{color:var(--text);}
+
+  .map-shell{position:relative;flex:1;min-height:392px;background:#050a12;}
+  #map{display:block;width:100%;height:100%;}
+  .map-panel{position:absolute;background:rgba(9,17,29,.93);border:1px solid var(--line2);
+    border-radius:5px;backdrop-filter:blur(3px);}
+  .layers{top:11px;left:11px;width:158px;padding:9px 10px;}
+  .layers h4{margin:0 0 7px;font:700 .55rem var(--mono);letter-spacing:.09em;color:var(--cyan);}
+  .layers label{display:flex;align-items:center;gap:6px;margin-bottom:4px;
+    font:600 .58rem var(--mono);color:var(--muted);cursor:pointer;}
+  .layers input{accent-color:var(--cyan);width:11px;height:11px;}
+  .layers .cx{color:var(--violet);}
+  .sat-card{top:11px;right:11px;width:214px;padding:10px 11px;}
+  .sat-card h4{margin:0 0 3px;font:700 .68rem var(--mono);color:var(--cyan);}
+  .sat-card .sub{font:600 .53rem var(--mono);letter-spacing:.06em;color:var(--dim);margin-bottom:7px;}
+  .sat-card .r{display:flex;justify-content:space-between;gap:8px;margin-bottom:3px;
+    font:600 .59rem var(--mono);color:var(--muted);}
+  .sat-card .r b{color:var(--text);font-weight:600;}
+  .legend{bottom:44px;left:11px;padding:7px 10px;display:flex;flex-wrap:wrap;gap:11px;
+    font:600 .55rem var(--mono);color:var(--muted);}
+  .legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;}
+  .timeline{position:absolute;left:11px;right:11px;bottom:9px;display:flex;align-items:center;gap:10px;
+    padding:6px 11px;background:rgba(9,17,29,.93);border:1px solid var(--line2);border-radius:5px;}
+  .timeline span{font:700 .55rem var(--mono);letter-spacing:.07em;color:var(--muted);white-space:nowrap;}
+  .timeline input{flex:1;accent-color:var(--cyan);}
+  .timeline button{background:none;border:1px solid var(--line2);border-radius:3px;color:var(--cyan);
+    font:700 .55rem var(--mono);letter-spacing:.06em;padding:3px 9px;cursor:pointer;}
+  .view-toggle{position:absolute;top:11px;left:180px;display:flex;gap:5px;}
+  .view-toggle button{background:rgba(9,17,29,.93);border:1px solid var(--line2);border-radius:3px;
+    color:var(--muted);font:700 .55rem var(--mono);letter-spacing:.06em;padding:4px 9px;cursor:pointer;}
+  .view-toggle button.on{color:var(--cyan);border-color:var(--cyan);}
+
+  .callout{border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.06);border-radius:6px;
+    padding:11px 13px;font:600 .68rem var(--mono);line-height:1.65;color:var(--green);}
+  .strip{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .strip > div{background:var(--panel);padding:11px 12px;min-width:0;}
+  .strip .val{font-size:.94rem;margin-top:4px;}
+
+  @media(max-width:1320px){ .row.r1,.row.r2{grid-template-columns:1fr;}
+    .strip{grid-template-columns:repeat(4,1fr);} }
+  @media(max-width:1100px){ .row.r3{grid-template-columns:1fr;} .quad{grid-template-columns:1fr 1fr;}
+    .quad > div{border-bottom:1px solid var(--line);} }
+  @media(max-width:820px){ .shell{flex-direction:column;} .rail{width:100%;flex:none;flex-direction:row;
+      overflow-x:auto;padding:8px;} .brand,.rail-note{display:none;} .nav-item{white-space:nowrap;}
+    .quad{grid-template-columns:1fr;} .strip{grid-template-columns:1fr 1fr;} .sens{grid-template-columns:1fr;}
+    .sat-card{display:none;} .view-toggle{left:auto;right:11px;} }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail">
+    <div class="brand"><span class="ring"></span><div><b>ORBITAL IQ</b><span>INTELLIGENCE FABRIC</span></div></div>
+    <a class="nav-item active" href="/dashboard/orbital-iq">Mission Control</a>
+    <a class="nav-item" href="/">Dashboard</a>
+    <div class="nav-item disabled" data-noreal="Orbital Nodes">Orbital Nodes</div>
+    <div class="nav-item disabled" data-noreal="Tasking">Tasking</div>
+    <a class="nav-item" href="/dashboard/events">Events</a>
+    <a class="nav-item" href="/dashboard/map">Fusion Map</a>
+    <div class="nav-item disabled" data-noreal="Analyst Workspace">Analyst Workspace</div>
+    <a class="nav-item" href="/dashboard/commercial">Commercial Ops</a>
+    <div class="nav-item disabled" data-noreal="Reports">Reports</div>
+    <div class="nav-item disabled" data-noreal="System Health">System Health</div>
+    <div class="nav-item disabled" data-noreal="Settings">Settings</div>
+    <div class="rail-note">Mission Control, Dashboard, Events, Fusion Map, and Commercial Ops are real pages. Dimmed items have no real page yet &mdash; clicking says so instead of doing nothing.</div>
+  </nav>
+
+  <div class="content">
+    <header class="topbar">
+      <div>
+        <h1>ARIES-01 <em>|</em> IOR SENTINEL NODE</h1>
+        <div class="orbit-facts">
+          <span>NORAD ID: <b>{{ norad_id }}</b></span>
+          <span>ALT: <b id="f-alt">&mdash;</b></span>
+          <span>INC: <b id="f-inc">&mdash;</b></span>
+          <span>SUB-POINT: <b id="f-sub">&mdash;</b></span>
+          <span>VEL: <b id="f-vel">&mdash;</b></span>
+          {% if database_error or passes_error %}
+          <span class="chip warn"><span class="dot"></span>DEGRADED</span>
+          {% else %}
+          <span class="chip ok"><span class="dot"></span>HEALTHY</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div><div id="clock">&mdash;</div><div style="color:var(--dim);">OPERATOR: MISSION-CTRL</div></div>
+        <span class="chip live"><span class="dot pulse"></span>LIVE</span>
+        <span class="qa">QUICK ACTIONS</span>
+      </div>
+    </header>
+
+    <main>
+      <p class="disclosure">
+        This is Orbital IQ's Mission Control overview, split across real pages: <a href="/dashboard/events">Events</a>
+        (per-workload run log/detail/economics), <a href="/dashboard/commercial">Commercial Ops</a> (coverage +
+        aggregate economics), and the dedicated <a href="/dashboard/map">Fusion Map</a>. Every number on this
+        page is real Aries data. The one panel still marked <span class="chip concept">CONCEPT</span> is the
+        SAR/AIS sensor-fusion layer on the embedded map below: Aries has no fused sensor feed or
+        vessel-detection model, so that stays an honest placeholder rather than fabricated detections.
+        Satellite positions are real SGP4 propagation of live Celestrak TLEs.
+      </p>
+
+      <div class="row r1">
+        <section class="panel">
+          <div class="panel-head"><h2>1 &middot; Mission Health</h2>
+            <span class="src">PostgreSQL &middot; Celestrak &middot; SatNOGS</span></div>
+          <div class="quad">
+            <div>
+              <h3>Infrastructure Health</h3>
+              <div class="kv"><span>PostgreSQL</span><b style="color:{{ 'var(--green)' if infra_health.postgres_ok else 'var(--red)' }}">{{ 'REACHABLE' if infra_health.postgres_ok else 'UNREACHABLE' }}</b></div>
+              <div class="kv"><span>MinIO</span><b style="color:{{ 'var(--green)' if infra_health.minio_ok else 'var(--red)' }}">{{ 'REACHABLE' if infra_health.minio_ok else 'UNREACHABLE' }}</b></div>
+              <div class="kv"><span>Workloads registered</span><b>{{ workload_matrix|length }}</b></div>
+              <div class="kv"><span>Latest TLE source</span><b style="color:{{ 'var(--amber)' if tle_stale else 'var(--green)' }}">{{ 'CACHED (stale)' if tle_stale else 'LIVE' }}</b></div>
+              <p style="margin:7px 0 0;font-size:.62rem;color:var(--dim);line-height:1.45;">
+                This checks the real Aries application stack (DB, object storage) &mdash; not spacecraft bus telemetry; Aries has no flight hardware.</p>
+            </div>
+            <div>
+              <h3>Observation Throughput</h3>
+              <div class="kv"><span>Obs / 24h</span><b>{{ status.observations_ingested_last_24h }}</b></div>
+              <div class="kv"><span>Obs / total</span><b>{{ status.observations_total }}</b></div>
+              <div class="kv"><span>Passes computed</span><b>{{ passes|length }}</b></div>
+              <div class="kv"><span>Satellites tracked</span><b id="f-total">&mdash;</b></div>
+              <div class="kv"><span>Currently overhead</span><b id="f-visible" style="color:var(--cyan)">&mdash;</b></div>
+              <p style="margin:7px 0 0;font-size:.62rem;color:var(--dim);line-height:1.45;">
+                Last stored: {{ status.last_successful_ingestion or "no rows ingested" }}</p>
+            </div>
+            <div>
+              <h3>Downlink Status</h3>
+              <div class="lbl">Next contact window</div>
+              <div class="countdown" id="f-countdown">&mdash;</div>
+              {% if passes %}
+              <div class="kv"><span>AOS (UTC)</span><b>{{ passes[0].aos[11:19] }}</b></div>
+              <div class="kv"><span>Max elevation</span><b>{{ passes[0].max_elevation_deg }}&deg;</b></div>
+              <div class="kv"><span>Direction</span><b>{{ passes[0].direction }}</b></div>
+              {% else %}
+              <p class="lbl">No pass computed</p>
+              {% endif %}
+              <div class="kv"><span>Link budget</span><b>{{ benchmark.assumptions.downlink_mbps if benchmark else "n/a" }} Mbps</b></div>
+              {% if tle_stale %}<p style="margin:6px 0 0;font-size:.62rem;color:var(--amber);">Stale TLE cache in use.</p>{% endif %}
+            </div>
+            <div>
+              <h3>Model State</h3>
+              {% if benchmark %}
+              <div class="kv"><span>Workload</span><b>{{ benchmark.workload.name }}</b></div>
+              <div class="kv"><span>Detector</span><b>{{ benchmark.workload.detector_version }}</b></div>
+              <div class="kv"><span>Pair ID</span><b>#{{ benchmark.pair_id }}</b></div>
+              <div class="kv"><span>Status</span><b style="color:var(--green)">{{ benchmark.status|upper }}</b></div>
+              <div class="kv"><span>Dataset</span><b>#{{ benchmark.dataset.id }} &middot; {{ benchmark.dataset.source }}</b></div>
+              <p style="margin:7px 0 0;font-size:.62rem;color:var(--dim);line-height:1.45;word-break:break-all;">
+                SHA256 {{ benchmark.dataset.sha256[:16] }}&hellip;</p>
+              {% else %}
+              <p class="lbl">{{ benchmark_error }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>2 &middot; Edge Economics <em>&mdash; measured</em></h2>
+            <span class="src">{% if benchmark %}{{ benchmark.workload.name }}{% else %}no pair{% endif %}</span></div>
+          {% if benchmark %}
+          {% set edge = benchmark.runs | rejectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+          {% set ground = benchmark.runs | selectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+          {% set timing_measured = 'measured' in edge.result.execution.timing_basis %}
+          {% set electricity = benchmark.assumptions.electricity_inr_per_kwh %}
+          {% set downlink_price = benchmark.assumptions.downlink_inr_per_gb %}
+          {% set ground_energy_inr = ground.energy_joules / 3600000 * electricity %}
+          {% set ground_compute_inr = ground.cost_per_run_inr - ground_energy_inr %}
+          {% set edge_energy_inr = edge.energy_joules / 3600000 * electricity %}
+          {% set edge_hardware_inr = edge.cost_per_run_inr - edge_energy_inr %}
+          {% set ground_downlink_inr = ground.input_bytes / 1000000000 * downlink_price %}
+          {% set edge_downlink_inr = edge.output_bytes / 1000000000 * downlink_price %}
+          {% set downlink_saved_inr = ground_downlink_inr - edge_downlink_inr %}
+          {% set ground_total_inr = ground.cost_per_run_inr + ground_downlink_inr %}
+          {% set edge_total_inr = edge.cost_per_run_inr + edge_downlink_inr %}
+          {% set edge_capex_per_run = benchmark.assumptions.edge_hardware_capex_per_run_inr %}
+          {% set edge_lifetime_days = benchmark.assumptions.edge_hardware_lifetime_hours / 24 %}
+          {% set capex_headroom_inr = ground_total_inr - edge_downlink_inr - edge_energy_inr %}
+          {% if capex_headroom_inr > 0 %}
+          {% set breakeven_runs_per_day = benchmark.assumptions.edge_hardware_capex_inr / capex_headroom_inr / edge_lifetime_days %}
+          {% endif %}
+          <div class="drf-head">
+            <div><div class="lbl">{{ benchmark.workload.name }} &middot; data reduction factor</div>
+              <div class="drf">{{ "%.2f"|format(edge.data_reduction_factor) }}&times;</div></div>
+            <div style="text-align:right;"><div class="lbl">Recommended</div>
+              <div class="rec {{ benchmark.recommendation or 'none' }}">
+                {% if benchmark.recommendation == 'edge' %}ORBITAL EDGE{% elif benchmark.recommendation == 'ground' %}GROUND{% else %}NO CALL{% endif %}</div></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cost / run</th><th style="text-align:right;">Ground-first</th><th style="text-align:right;">Orbital edge</th></tr></thead>
+              <tbody>
+                <tr><td>Compute (rental)</td><td class="num">&#8377;{{ "%.9f"|format(ground_compute_inr) }}</td><td class="num">&mdash;</td></tr>
+                <tr><td>Energy</td><td class="num">&#8377;{{ "%.9f"|format(ground_energy_inr) }}</td><td class="num">&#8377;{{ "%.9f"|format(edge_energy_inr) }}</td></tr>
+                <tr><td>Hardware (amortized)</td><td class="num">&mdash;</td><td class="num">&#8377;{{ "%.9f"|format(edge_hardware_inr) }}</td></tr>
+                <tr><td>Downlink saved vs. ground</td><td class="num">&mdash;</td><td class="num">&#8377;{{ "%.9f"|format(downlink_saved_inr) }}</td></tr>
+                <tr class="total"><td>Total / insight</td><td class="num">&#8377;{{ "%.9f"|format(ground_total_inr) }}</td><td class="num">&#8377;{{ "%.9f"|format(edge_total_inr) }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="sens">
+            <div><div class="lbl">Break-even utilization</div><div class="val" style="font-size:.76rem;">
+              {% if breakeven_runs_per_day is defined %}{{ "%.2f"|format(breakeven_runs_per_day) }} runs/day{% else %}uneconomical{% endif %}</div></div>
+            <div><div class="lbl">Break-even downlink</div><div class="val" style="font-size:.76rem;">
+              {% if benchmark.break_even_downlink_inr_per_gb is not none %}&#8377;{{ "%.2f"|format(benchmark.break_even_downlink_inr_per_gb) }}/GB{% else %}n/a{% endif %}</div></div>
+            <div><div class="lbl">Confidence</div>
+              <span class="badge {{ 'meas' if timing_measured else 'sim' }}">{{ 'MEASURED' if timing_measured else 'SIMULATED' }} EXEC</span>
+              <span class="badge est">ESTIMATED HARDWARE</span></div>
+          </div>
+          {% if benchmark.recommendation %}
+          <p class="note"><strong>{% if benchmark.recommendation == 'edge' %}{{ edge.target_name }} wins{% else %}Ground wins{% endif %}</strong>
+            at the configured &#8377;{{ downlink_price }}/GB downlink price, edge hardware amortized at
+            &#8377;{{ "%.2f"|format(edge_capex_per_run) }}/run.
+            {% if timing_measured %}Edge timing is measured from a real run.{% else %}Edge timing is simulated (modeled from the ground baseline), not a real run.{% endif %}</p>
+          {% else %}
+          <p class="note">No placement recommendation: this input produced no positive data reduction.</p>
+          {% endif %}
+          {% else %}
+          <p class="note">{{ benchmark_error }}</p>
+          {% endif %}
+        </section>
+      </div>
+
+      <div class="row r2">
+        <section class="panel">
+          <div class="panel-head"><h2>3 &middot; Fused Intelligence Map <em>&mdash; live orbital layer</em></h2>
+            <span class="src">Celestrak GP &middot; SGP4 / Skyfield</span></div>
+          <div class="concept-bar"><span class="chip concept">CONCEPT</span>
+            SAR / AIS / EO detection layers are illustrative &mdash; satellite positions and footprints below are real.</div>
+          <div class="map-shell">
+            <canvas id="map"></canvas>
+            <div class="map-panel layers">
+              <h4>Layers</h4>
+              <label><input type="checkbox" data-layer="land" checked/> Coastlines</label>
+              <label><input type="checkbox" data-layer="grid" checked/> Graticule</label>
+              <label><input type="checkbox" data-layer="sats" checked/> Satellites (real)</label>
+              <label><input type="checkbox" data-layer="footprint" checked/> Sensor footprints</label>
+              <label><input type="checkbox" data-layer="track" checked/> Ground track</label>
+              <label><input type="checkbox" data-layer="station" checked/> Ground station</label>
+              <label><input type="checkbox" data-layer="labels" checked/> Labels</label>
+              <label class="cx"><input type="checkbox" data-layer="sar"/> SAR detections</label>
+              <label class="cx"><input type="checkbox" data-layer="ais"/> AIS vessels</label>
+            </div>
+            <div class="view-toggle">
+              <button data-view="ior" class="on">IOR</button>
+              <button data-view="world">WORLD</button>
+            </div>
+            <div class="map-panel sat-card" id="sat-card" style="display:none;"></div>
+            <div class="map-panel legend">
+              <span><i style="background:#22d3ee"></i>Above horizon</span>
+              <span><i style="background:#fbbf24"></i>Tracked node</span>
+              <span><i style="background:#3f5f88"></i>Below horizon</span>
+              <span><i style="background:#34d399"></i>Ground station</span>
+            </div>
+            <div class="timeline">
+              <span id="tl-label">NOW</span>
+              <input type="range" id="tl" min="-120" max="120" step="5" value="0"/>
+              <button id="tl-reset">RESET</button>
+            </div>
+          </div>
+        </section>
+
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
+          <div class="callout" id="callout">Live orbital layer initialising&hellip;</div>
+          <section class="panel">
+            <div class="panel-head"><h2>Overhead Now <em>&mdash; real</em></h2><span class="src">SGP4</span></div>
+            <div class="table-wrap">
+              <table><thead><tr><th>Satellite</th><th style="text-align:right;">El.</th><th style="text-align:right;">Alt km</th></tr></thead>
+              <tbody id="overhead-rows"><tr><td colspan="3" style="color:var(--muted);">Loading&hellip;</td></tr></tbody></table>
+            </div>
+          </section>
+          <a class="panel teaser" href="/dashboard/events">
+            <div class="panel-head"><h2>Events <em>&mdash; real</em></h2><span class="src">&rarr;</span></div>
+            <p class="teaser-body">Full benchmark run log across all {{ workload_matrix|length }} registered workloads, with per-run detail and cost breakdown.</p>
+          </a>
+          <a class="panel teaser" href="/dashboard/commercial">
+            <div class="panel-head"><h2>Commercial Ops <em>&mdash; real</em></h2><span class="src">&rarr;</span></div>
+            <p class="teaser-body">Workload coverage and aggregate ground-vs-edge economics across every measured workload. No customer or revenue data exists yet.</p>
+          </a>
+        </div>
+      </div>
+
+      <div class="strip">
+        <div><div class="lbl">Satellites tracked</div><div class="val cyan" id="s-total">&mdash;</div></div>
+        <div><div class="lbl">Above horizon</div><div class="val cyan" id="s-visible">&mdash;</div></div>
+        <div><div class="lbl">Passes computed</div><div class="val cyan">{{ passes|length }}</div></div>
+        <div><div class="lbl">Observations total</div><div class="val cyan">{{ status.observations_total }}</div></div>
+        <div><div class="lbl">Data reduction</div><div class="val cyan">
+          {% if benchmark %}{{ "%.1f"|format((benchmark.runs | rejectattr('target_slug','equalto','ground-cpu') | first).data_reduction_factor) }}&times;{% else %}n/a{% endif %}</div></div>
+        <div><div class="lbl">Placement call</div><div class="val amber">
+          {% if benchmark and benchmark.recommendation %}{{ benchmark.recommendation|upper }}{% else %}NO CALL{% endif %}</div></div>
+        <div><div class="lbl">Downlink saved (sum)</div>
+          <div class="val cyan">{{ "%.1f"|format((workload_matrix | sum(attribute='downlink_saved_bytes')) / 1000000) }} MB</div></div>
+        <div><div class="lbl">System status</div><div class="val green" id="s-status">
+          {% if database_error or passes_error %}DEGRADED{% else %}NOMINAL{% endif %}</div></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var VIEWS = { ior: [25, -42, 132, 46], world: [-180, -83, 180, 83] };
+  var state = {
+    view: "ior", offset: 0, data: null, land: null, selected: null, hits: [],
+    layers: { land: true, grid: true, sats: true, footprint: true, track: true, station: true, labels: true }
+  };
+  var canvas = document.getElementById("map");
+  var ctx = canvas.getContext("2d");
+  var station = { lat: {{ station_lat }}, lon: {{ station_lon }}, name: "{{ station_name }}" };
+  var trackedId = {{ norad_id }};
+  var nextPassIso = {% if passes %}"{{ passes[0].aos }}"{% else %}null{% endif %};
+
+  function bbox() { return VIEWS[state.view]; }
+  function projX(lon, b, w) { return (lon - b[0]) / (b[2] - b[0]) * w; }
+  function projY(lat, b, h) { return (b[3] - lat) / (b[3] - b[1]) * h; }
+
+  function sizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: rect.width, h: rect.height };
+  }
+
+  function drawPolyline(points, b, size, close) {
+    var started = false, prevX = null;
+    ctx.beginPath();
+    for (var i = 0; i < points.length; i++) {
+      var lon = points[i][0], lat = points[i][1];
+      var x = projX(lon, b, size.w), y = projY(lat, b, size.h);
+      if (started && Math.abs(x - prevX) > size.w * 0.55) { started = false; }
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      prevX = x;
+    }
+    if (close) { ctx.closePath(); }
+  }
+
+  function render() {
+    var size = sizeCanvas(), b = bbox();
+    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.fillStyle = "#050a12";
+    ctx.fillRect(0, 0, size.w, size.h);
+
+    if (state.layers.grid) {
+      ctx.strokeStyle = "rgba(34,211,238,.09)"; ctx.lineWidth = 1;
+      for (var lon = -180; lon <= 180; lon += 15) {
+        var gx = projX(lon, b, size.w);
+        if (gx < 0 || gx > size.w) continue;
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, size.h); ctx.stroke();
+      }
+      for (var lat = -90; lat <= 90; lat += 15) {
+        var gy = projY(lat, b, size.h);
+        if (gy < 0 || gy > size.h) continue;
+        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(size.w, gy); ctx.stroke();
+      }
+    }
+
+    if (state.layers.land && state.land) {
+      ctx.fillStyle = "rgba(23,45,74,.55)";
+      ctx.strokeStyle = "rgba(80,140,190,.5)";
+      ctx.lineWidth = 1;
+      for (var r = 0; r < state.land.length; r++) {
+        drawPolyline(state.land[r], b, size, true);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+
+    var data = state.data;
+    state.hits = [];
+    if (!data) { return; }
+
+    if (state.layers.track && data.ground_track && data.ground_track.length) {
+      ctx.strokeStyle = "rgba(251,191,36,.6)";
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 4]);
+      drawPolyline(data.ground_track, b, size, false);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (state.layers.station) {
+      var sx = projX(station.lon, b, size.w), sy = projY(station.lat, b, size.h);
+      ctx.strokeStyle = "#34d399"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#34d399";
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (state.layers.labels) {
+        ctx.font = "600 9px ui-monospace,monospace";
+        ctx.fillText("GROUND STATION", sx + 11, sy + 3);
+      }
+    }
+
+    if (!state.layers.sats) { return; }
+    var sats = data.satellites || [];
+    for (var i = sats.length - 1; i >= 0; i--) {
+      var s = sats[i];
+      var x = projX(s.lon, b, size.w), y = projY(s.lat, b, size.h);
+      if (x < -60 || x > size.w + 60 || y < -60 || y > size.h + 60) { continue; }
+      var tracked = s.norad_id === trackedId;
+      var color = tracked ? "#fbbf24" : (s.visible ? "#22d3ee" : "#3f5f88");
+
+      if (state.layers.footprint && (s.visible || tracked)) {
+        var radLat = s.footprint_radius_km / 111.32;
+        var cosLat = Math.cos(s.lat * Math.PI / 180);
+        var radLon = radLat / (Math.abs(cosLat) < 0.15 ? 0.15 : cosLat);
+        var rx = Math.abs(projX(s.lon + radLon, b, size.w) - x);
+        var ry = Math.abs(projY(s.lat + radLat, b, size.h) - y);
+        ctx.strokeStyle = tracked ? "rgba(251,191,36,.35)" : "rgba(34,211,238,.28)";
+        ctx.fillStyle = tracked ? "rgba(251,191,36,.06)" : "rgba(34,211,238,.05)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, tracked ? 5 : (s.visible ? 4 : 2.5), 0, Math.PI * 2); ctx.fill();
+      if (state.selected === s.norad_id) {
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (state.layers.labels && (tracked || s.visible)) {
+        ctx.fillStyle = color;
+        ctx.font = "600 9px ui-monospace,monospace";
+        ctx.fillText(s.name.slice(0, 22), x + 8, y - 6);
+      }
+      state.hits.push({ x: x, y: y, sat: s });
+    }
+  }
+
+  function fmtCount(n) { return n === null || n === undefined ? "\u2014" : String(n); }
+
+  function paintPanels() {
+    var d = state.data;
+    if (!d) { return; }
+    document.getElementById("f-total").textContent = fmtCount(d.total_count);
+    document.getElementById("f-visible").textContent = fmtCount(d.visible_count);
+    document.getElementById("s-total").textContent = fmtCount(d.total_count);
+    document.getElementById("s-visible").textContent = fmtCount(d.visible_count);
+
+    var t = d.tracked;
+    document.getElementById("f-alt").textContent = t ? t.altitude_km.toFixed(1) + " km" : "\u2014";
+    document.getElementById("f-inc").textContent = t && t.inclination_deg !== null ? t.inclination_deg.toFixed(2) + "\u00b0" : "\u2014";
+    document.getElementById("f-sub").textContent = t ? t.lat.toFixed(2) + "\u00b0, " + t.lon.toFixed(2) + "\u00b0" : "\u2014";
+    document.getElementById("f-vel").textContent = t ? t.velocity_km_s.toFixed(2) + " km/s" : "\u2014";
+
+    var rows = document.getElementById("overhead-rows");
+    var visible = (d.satellites || []).filter(function (s) { return s.visible; }).slice(0, 8);
+    if (!visible.length) {
+      rows.innerHTML = '<tr><td colspan="3" style="color:var(--muted);">No catalogued satellite above the horizon right now.</td></tr>';
+    } else {
+      rows.innerHTML = visible.map(function (s) {
+        return '<tr><td>' + s.name.replace(/[<>&]/g, "") + '</td><td class="num">' +
+          s.elevation_deg.toFixed(1) + '\u00b0</td><td class="num">' + s.altitude_km.toFixed(0) + '</td></tr>';
+      }).join("");
+    }
+
+    document.getElementById("callout").innerHTML =
+      "REAL ORBITAL LAYER \u2014 " + d.total_count + " CATALOGUED SATELLITES PROPAGATED FROM LIVE CELESTRAK TLEs, " +
+      d.visible_count + " CURRENTLY ABOVE THE HORIZON AT " + station.name.toUpperCase() + "." +
+      (d.stale ? " (STALE TLE CACHE)" : "");
+  }
+
+  function showCard(sat) {
+    var card = document.getElementById("sat-card");
+    if (!sat) { card.style.display = "none"; return; }
+    card.style.display = "block";
+    card.innerHTML =
+      "<h4>" + sat.name.replace(/[<>&]/g, "") + "</h4>" +
+      '<div class="sub">NORAD ' + sat.norad_id + " \u00b7 REAL SGP4 STATE</div>" +
+      '<div class="r"><span>Sub-point</span><b>' + sat.lat.toFixed(2) + "\u00b0, " + sat.lon.toFixed(2) + "\u00b0</b></div>" +
+      '<div class="r"><span>Altitude</span><b>' + sat.altitude_km.toFixed(1) + " km</b></div>" +
+      '<div class="r"><span>Velocity</span><b>' + sat.velocity_km_s.toFixed(2) + " km/s</b></div>" +
+      '<div class="r"><span>Elevation</span><b>' + sat.elevation_deg.toFixed(2) + "\u00b0</b></div>" +
+      '<div class="r"><span>Azimuth</span><b>' + sat.azimuth_deg.toFixed(2) + "\u00b0</b></div>" +
+      '<div class="r"><span>Footprint</span><b>' + sat.footprint_radius_km.toFixed(0) + " km</b></div>" +
+      '<div class="r"><span>Inclination</span><b>' + (sat.inclination_deg === null ? "n/a" : sat.inclination_deg.toFixed(2) + "\u00b0") + "</b></div>" +
+      '<div class="r"><span>Period</span><b>' + (sat.period_minutes === null ? "n/a" : sat.period_minutes.toFixed(1) + " min") + "</b></div>";
+  }
+
+  function load() {
+    fetch("/api/overhead?offset_minutes=" + state.offset, { headers: { "ngrok-skip-browser-warning": "1" } })
+      .then(function (r) { if (!r.ok) { throw new Error("overhead " + r.status); } return r.json(); })
+      .then(function (d) {
+        state.data = d;
+        paintPanels();
+        render();
+        if (state.selected) {
+          var found = (d.satellites || []).filter(function (s) { return s.norad_id === state.selected; })[0];
+          showCard(found || null);
+        }
+      })
+      .catch(function () {
+        document.getElementById("callout").textContent = "Live orbital layer unavailable (no TLE source reachable).";
+      });
+  }
+
+  canvas.addEventListener("click", function (event) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = event.clientX - rect.left, my = event.clientY - rect.top;
+    var best = null, bestDist = 14;
+    for (var i = 0; i < state.hits.length; i++) {
+      var h = state.hits[i];
+      var dist = Math.sqrt((h.x - mx) * (h.x - mx) + (h.y - my) * (h.y - my));
+      if (dist < bestDist) { bestDist = dist; best = h.sat; }
+    }
+    state.selected = best ? best.norad_id : null;
+    showCard(best);
+    render();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-layer]"), function (input) {
+    input.addEventListener("change", function () {
+      var key = input.getAttribute("data-layer");
+      if (key === "sar" || key === "ais") {
+        input.checked = false;
+        window.alert("No SAR or AIS feed is connected to Aries. These layers exist in the mockup only.");
+        return;
+      }
+      state.layers[key] = input.checked;
+      render();
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-noreal]"), function (item) {
+    item.addEventListener("click", function () {
+      window.alert('"' + item.getAttribute("data-noreal") + '" has no real page in Aries yet -- only Dashboard and Fusion Map are wired up so far.');
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-view]"), function (button) {
+    button.addEventListener("click", function () {
+      state.view = button.getAttribute("data-view");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-view]"), function (other) {
+        other.classList.toggle("on", other === button);
+      });
+      render();
+    });
+  });
+
+  var slider = document.getElementById("tl");
+  var sliderLabel = document.getElementById("tl-label");
+  slider.addEventListener("input", function () {
+    state.offset = Number(slider.value);
+    sliderLabel.textContent = state.offset === 0 ? "NOW" :
+      (state.offset > 0 ? "+" : "") + state.offset + " MIN";
+  });
+  slider.addEventListener("change", load);
+  document.getElementById("tl-reset").addEventListener("click", function () {
+    slider.value = 0; state.offset = 0; sliderLabel.textContent = "NOW"; load();
+  });
+
+  function tick() {
+    var now = new Date();
+    document.getElementById("clock").textContent =
+      now.toISOString().slice(0, 19).replace("T", " ") + " UTC";
+    var el = document.getElementById("f-countdown");
+    if (nextPassIso) {
+      var delta = Math.floor((new Date(nextPassIso) - now) / 1000);
+      if (delta < 0) { el.textContent = "IN PASS / ELAPSED"; }
+      else {
+        var hh = String(Math.floor(delta / 3600)).padStart(2, "0");
+        var mm = String(Math.floor((delta % 3600) / 60)).padStart(2, "0");
+        var ss = String(delta % 60).padStart(2, "0");
+        el.textContent = hh + ":" + mm + ":" + ss;
+      }
+    } else { el.textContent = "n/a"; }
+  }
+
+  fetch("/static/land-110m.json", { headers: { "ngrok-skip-browser-warning": "1" } })
+    .then(function (r) { return r.json(); })
+    .then(function (rings) { state.land = rings; render(); })
+    .catch(function () { state.land = null; });
+
+  window.addEventListener("resize", render);
+  tick(); setInterval(tick, 1000);
+  load(); setInterval(function () { if (state.offset === 0) { load(); } }, 10000);
+})();
+</script>
+</body>
+</html>

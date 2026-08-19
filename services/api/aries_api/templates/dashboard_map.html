@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Aries &middot; Orbital Map</title>
+<style>
+  :root{
+    --bg:#060b14; --panel:#0b1422; --panel2:#0e1a2b; --line:#18263c; --line2:#22344f;
+    --text:#dce7f5; --muted:#6b829f; --dim:#43587a;
+    --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  a{color:var(--cyan);}
+  .lbl{font:600 .58rem var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);}
+  .shell{display:flex;flex-direction:column;height:100%;}
+  header{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;
+    padding:10px 16px;border-bottom:1px solid var(--line);background:#070e19;flex:none;z-index:5;}
+  header h1{margin:0;font:700 1.05rem var(--mono);letter-spacing:.02em;}
+  header h1 em{font-style:normal;color:var(--dim);font-weight:400;font-size:.85rem;}
+  .crumbs{font:600 .62rem var(--mono);letter-spacing:.05em;color:var(--muted);}
+  .crumbs a{color:var(--cyan);}
+  .hdr-right{display:flex;align-items:center;gap:12px;font:600 .6rem var(--mono);color:var(--muted);}
+  .side-toggle{display:none;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;
+    color:var(--text);font:700 .6rem var(--mono);padding:6px 10px;cursor:pointer;}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:3px;
+    font:700 .56rem var(--mono);letter-spacing:.08em;border:1px solid;}
+  .chip.live{color:var(--cyan);border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.08);}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .dot.pulse{animation:pulse 1.9s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+  .body{flex:1;display:flex;min-height:0;}
+  .side{width:272px;flex:0 0 272px;border-right:1px solid var(--line);background:var(--panel);
+    display:flex;flex-direction:column;min-height:0;}
+  .side h2{margin:0;padding:10px 13px;font:700 .64rem var(--mono);letter-spacing:.08em;
+    text-transform:uppercase;border-bottom:1px solid var(--line);background:var(--panel2);}
+  .search{padding:9px 11px;border-bottom:1px solid var(--line);}
+  .search input{width:100%;background:#081019;border:1px solid var(--line2);border-radius:4px;
+    color:var(--text);padding:7px 9px;font:600 .72rem var(--mono);}
+  .search input:focus{outline:1px solid var(--cyan);}
+  .sat-list{flex:1;overflow-y:auto;min-height:0;}
+  .sat-row{padding:7px 12px;border-bottom:1px solid rgba(24,38,60,.6);cursor:pointer;
+    font:600 .68rem var(--mono);display:flex;justify-content:space-between;gap:6px;}
+  .sat-row:hover{background:var(--panel2);}
+  .sat-row.sel{background:rgba(34,211,238,.1);border-left:2px solid var(--cyan);}
+  .sat-row .n{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sat-row .e{color:var(--muted);flex:none;}
+  .sat-row.tracked .n{color:var(--amber);}
+  .sat-row.vis .e{color:var(--cyan);}
+  .side-foot{padding:9px 12px;border-top:1px solid var(--line);font-size:.62rem;color:var(--dim);line-height:1.5;}
+
+  .mapwrap{flex:1;position:relative;min-width:0;}
+  canvas{display:block;width:100%;height:100%;cursor:grab;}
+  canvas.dragging{cursor:grabbing;}
+
+  .float{position:absolute;background:rgba(8,14,22,.92);border:1px solid var(--line2);
+    border-radius:6px;backdrop-filter:blur(3px);max-width:calc(100% - 24px);box-sizing:border-box;}
+  .layers{top:12px;right:12px;padding:10px 12px;font:600 .66rem var(--mono);width:186px;}
+  .layers h4{margin:0 0 7px;font-size:.6rem;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;}
+  .layers label{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;color:var(--text);}
+  .layers label.cx{color:var(--violet);}
+  .layers input[type=checkbox]{accent-color:#22d3ee;}
+  .legend{bottom:12px;left:12px;padding:8px 11px;display:flex;flex-direction:column;gap:4px;
+    font:600 .62rem var(--mono);color:var(--muted);}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .zoomctl{bottom:12px;right:12px;display:flex;flex-direction:column;overflow:hidden;}
+  .zoomctl button{width:30px;height:30px;background:transparent;border:0;border-bottom:1px solid var(--line);
+    color:var(--text);font-size:1rem;cursor:pointer;}
+  .zoomctl button:last-child{border-bottom:0;}
+  .zoomctl button:hover{background:var(--panel2);}
+
+  .card{top:12px;left:12px;width:250px;padding:12px 13px;}
+  .card h3{margin:0 0 3px;font:700 .82rem -apple-system,sans-serif;overflow-wrap:anywhere;}
+  .card .sub{color:var(--dim);font:600 .58rem var(--mono);letter-spacing:.06em;margin-bottom:9px;}
+  .card .r{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;font:600 .68rem var(--mono);
+    color:var(--muted);margin-bottom:5px;}
+  .card .r b{color:var(--text);font-weight:600;overflow-wrap:anywhere;text-align:right;}
+  .card button{margin-top:7px;width:100%;padding:6px;background:var(--panel2);border:1px solid var(--line2);
+    border-radius:4px;color:var(--cyan);font:700 .62rem var(--mono);letter-spacing:.05em;cursor:pointer;}
+  .card button:hover{background:var(--line2);}
+  .card .close{position:absolute;top:8px;right:9px;cursor:pointer;color:var(--dim);font-size:.9rem;}
+
+  .timeline{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;
+    align-items:center;gap:9px;padding:7px 14px;font:700 .62rem var(--mono);letter-spacing:.04em;}
+  .timeline input{width:220px;accent-color:#22d3ee;}
+  .timeline button{background:var(--panel2);border:1px solid var(--line2);border-radius:3px;
+    color:var(--text);font:700 .58rem var(--mono);padding:4px 8px;cursor:pointer;}
+
+  .callout{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:6px 14px;
+    font:600 .62rem var(--mono);letter-spacing:.04em;color:var(--cyan);white-space:nowrap;}
+
+  .disclosure{position:absolute;bottom:12px;left:12px;max-width:340px;font-size:.6rem;color:var(--dim);
+    line-height:1.5;display:none;}
+
+  @media(max-width:860px){
+    .side-toggle{display:inline-block;}
+    .side{position:absolute;left:0;top:0;bottom:0;z-index:8;transform:translateX(-100%);
+      transition:transform .2s;box-shadow:8px 0 24px rgba(0,0,0,.5);}
+    .side.open{transform:translateX(0);}
+    .layers{width:150px;}
+    .timeline input{width:120px;}
+    .card{width:210px;}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <h1>ORBITAL MAP <em>&middot; real SGP4 propagation</em></h1>
+      <div class="crumbs"><a href="/">Dashboard</a> &middot; <a href="/dashboard/orbital-iq">Orbital IQ</a> &middot; Map</div>
+    </div>
+    <div class="hdr-right">
+      <button class="side-toggle" id="side-toggle">SATELLITES &#9776;</button>
+      <span>{{ station_name }} &middot; {{ station_lat }}, {{ station_lon }}</span>
+      <span class="chip live"><span class="dot pulse"></span>LIVE</span>
+      <span id="clock">&mdash;</span>
+    </div>
+  </header>
+  <div class="body">
+    <nav class="side" id="side">
+      <h2>Catalogued Satellites</h2>
+      <div class="search"><input id="search" type="text" placeholder="Filter by name or NORAD ID&hellip;" autocomplete="off"/></div>
+      <div class="sat-list" id="sat-list"><div style="padding:12px;color:var(--muted);">Loading&hellip;</div></div>
+      <div class="side-foot" id="side-foot">&mdash;</div>
+    </nav>
+    <div class="mapwrap" id="mapwrap">
+      <canvas id="map"></canvas>
+      <div class="callout" id="callout"></div>
+      <div class="float layers">
+        <h4>Layers</h4>
+        <label><input type="checkbox" data-layer="land" checked/> Coastlines</label>
+        <label><input type="checkbox" data-layer="grid" checked/> Graticule</label>
+        <label><input type="checkbox" data-layer="terminator" checked/> Day / night terminator</label>
+        <label><input type="checkbox" data-layer="sats" checked/> Satellites</label>
+        <label><input type="checkbox" data-layer="footprint" checked/> Footprints</label>
+        <label><input type="checkbox" data-layer="track" checked/> Ground track (selected)</label>
+        <label><input type="checkbox" data-layer="station" checked/> Ground station</label>
+        <label><input type="checkbox" data-layer="labels" checked/> Labels</label>
+        <label class="cx"><input type="checkbox" data-layer="sar"/> SAR detections</label>
+        <label class="cx"><input type="checkbox" data-layer="ais"/> AIS vessels</label>
+      </div>
+      <div class="float legend">
+        <span><i style="background:#22d3ee"></i>Above horizon</span>
+        <span><i style="background:#fbbf24"></i>Tracked node</span>
+        <span><i style="background:#3f5f88"></i>Below horizon</span>
+        <span><i style="background:#34d399"></i>Ground station</span>
+        <span><i style="background:linear-gradient(90deg,#fbbf24,#0b1422)"></i>Terminator (real, approx.)</span>
+      </div>
+      <div class="float zoomctl">
+        <button id="zoom-in">+</button>
+        <button id="zoom-out">&minus;</button>
+        <button id="zoom-reset" style="font-size:.6rem;">&#8635;</button>
+      </div>
+      <div class="float card" id="sat-card" style="display:none;"></div>
+      <div class="float timeline">
+        <span id="tl-label">NOW</span>
+        <input type="range" id="tl" min="-180" max="180" step="5" value="0"/>
+        <button id="tl-reset">RESET</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var trackedId = {{ norad_id }};
+  var station = { lat: {{ station_lat }}, lon: {{ station_lon }}, name: {{ station_name|tojson }} };
+
+  var view = { cx: 25, cy: 5, degPerPx: 0.11 }; // center lon/lat + zoom (deg of longitude per screen px)
+  var state = {
+    offset: 0, prev: null, next: null, prevAt: 0, nextAt: 0,
+    land: null, selected: null, selectedTrack: null, hits: [],
+    dragging: false, dragStart: null, dragOrigin: null,
+    layers: { land: true, grid: true, terminator: true, sats: true, footprint: true, track: true, station: true, labels: true }
+  };
+
+  var canvas = document.getElementById("map");
+  var ctx = canvas.getContext("2d");
+
+  function bbox() {
+    var w = canvas.clientWidth || 800;
+    // Same 340deg safety cap as zoom() -- enforced again here so a window
+    // resize (without another scroll/zoom event) can't re-trigger the
+    // wrap-around projection bug at a degPerPx that was safe for the old size.
+    var degPerPx = Math.min(view.degPerPx, 340 / w);
+    var halfW = w / 2 * degPerPx;
+    var halfH = (canvas.clientHeight || 500) / 2 * degPerPx;
+    return [view.cx - halfW, view.cy - halfH, view.cx + halfW, view.cy + halfH];
+  }
+  function projX(lon, b, w) {
+    var d = ((lon - b[0] + 540) % 360) - 180; // shortest signed delta from left edge
+    return d / (b[2] - b[0]) * w;
+  }
+  function projY(lat, b, h) { return (b[3] - lat) / (b[3] - b[1]) * h; }
+
+  function sizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: rect.width, h: rect.height };
+  }
+
+  function drawPolyline(points, b, size, close) {
+    var started = false, prevX = null;
+    ctx.beginPath();
+    for (var i = 0; i < points.length; i++) {
+      var lon = points[i][0], lat = points[i][1];
+      var x = projX(lon, b, size.w), y = projY(lat, b, size.h);
+      if (started && Math.abs(x - prevX) > size.w * 0.6) { started = false; }
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      prevX = x;
+    }
+    if (close) { ctx.closePath(); }
+  }
+
+  // Interpolate real satellite positions between two real polled samples so
+  // motion reads as continuous instead of jumping every poll interval. This
+  // is a linear tween of two genuine SGP4 states a few seconds apart -- not
+  // a synthesised or predicted position.
+  function shortestLon(a, b) {
+    var d = b - a;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    return a + d;
+  }
+  function interpolated(now) {
+    if (!state.next) return null;
+    if (!state.prev) return state.next;
+    var span = state.nextAt - state.prevAt;
+    var t = span > 0 ? Math.max(0, Math.min(1, (now - state.prevAt) / span)) : 1;
+    var prevBySat = {};
+    state.prev.satellites.forEach(function (s) { prevBySat[s.norad_id] = s; });
+    var sats = state.next.satellites.map(function (s) {
+      var p = prevBySat[s.norad_id];
+      if (!p) return s;
+      var lon = p.lon + (shortestLon(p.lon, s.lon) - p.lon) * t;
+      lon = ((lon + 180) % 360 + 360) % 360 - 180;
+      var lat = p.lat + (s.lat - p.lat) * t;
+      return Object.assign({}, s, { lat: lat, lon: lon });
+    });
+    var out = Object.assign({}, state.next, { satellites: sats });
+    return out;
+  }
+
+  function render() {
+    var size = sizeCanvas(), b = bbox();
+    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.fillStyle = "#050a12";
+    ctx.fillRect(0, 0, size.w, size.h);
+
+    var d = interpolated(performance.now());
+
+    if (state.layers.terminator && d && d.subsolar) {
+      drawTerminator(d.subsolar, b, size);
+    }
+
+    if (state.layers.grid) {
+      ctx.strokeStyle = "rgba(34,211,238,.08)"; ctx.lineWidth = 1;
+      for (var lon = -180; lon <= 180; lon += 15) {
+        var gx = projX(lon, b, size.w);
+        if (gx < -5 || gx > size.w + 5) continue;
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, size.h); ctx.stroke();
+      }
+      for (var lat = -90; lat <= 90; lat += 15) {
+        var gy = projY(lat, b, size.h);
+        if (gy < -5 || gy > size.h + 5) continue;
+        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(size.w, gy); ctx.stroke();
+      }
+    }
+
+    if (state.layers.land && state.land) {
+      ctx.fillStyle = "rgba(23,45,74,.6)";
+      ctx.strokeStyle = "rgba(80,140,190,.55)";
+      ctx.lineWidth = 1;
+      for (var r = 0; r < state.land.length; r++) {
+        drawPolyline(state.land[r], b, size, true);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+
+    state.hits = [];
+    if (!d) { return; }
+
+    if (state.layers.track && state.selectedTrack && state.selectedTrack.length) {
+      ctx.strokeStyle = "rgba(251,191,36,.65)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      drawPolyline(state.selectedTrack, b, size, false);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (state.layers.station) {
+      var sx = projX(station.lon, b, size.w), sy = projY(station.lat, b, size.h);
+      ctx.strokeStyle = "#34d399"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#34d399";
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (state.layers.labels) {
+        ctx.fillStyle = "#34d399";
+        ctx.font = "600 9px ui-monospace,monospace";
+        ctx.fillText(station.name.toUpperCase(), sx + 11, sy + 3);
+      }
+    }
+
+    if (!state.layers.sats) { return; }
+    var sats = d.satellites || [];
+    for (var i = sats.length - 1; i >= 0; i--) {
+      var s = sats[i];
+      var x = projX(s.lon, b, size.w), y = projY(s.lat, b, size.h);
+      if (x < -60 || x > size.w + 60 || y < -60 || y > size.h + 60) { continue; }
+      var tracked = s.norad_id === trackedId;
+      var color = tracked ? "#fbbf24" : (s.visible ? "#22d3ee" : "#3f5f88");
+
+      if (state.layers.footprint && (s.visible || tracked || state.selected === s.norad_id)) {
+        var radLat = s.footprint_radius_km / 111.32;
+        var cosLat = Math.cos(s.lat * Math.PI / 180);
+        var radLon = radLat / (Math.abs(cosLat) < 0.15 ? 0.15 : cosLat);
+        var rx = Math.abs(projX(s.lon + radLon, b, size.w) - x);
+        var ry = Math.abs(projY(s.lat + radLat, b, size.h) - y);
+        ctx.strokeStyle = tracked ? "rgba(251,191,36,.4)" : "rgba(34,211,238,.3)";
+        ctx.fillStyle = tracked ? "rgba(251,191,36,.07)" : "rgba(34,211,238,.06)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+
+      ctx.fillStyle = color;
+      var radius = tracked ? 5.5 : (s.visible ? 4 : 2.5);
+      ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+      if (state.selected === s.norad_id) {
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x, y, radius + 4, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (state.layers.labels && (tracked || s.visible || state.selected === s.norad_id)) {
+        ctx.fillStyle = color;
+        ctx.font = "600 9px ui-monospace,monospace";
+        ctx.fillText(s.name.slice(0, 24), x + 8, y - 6);
+      }
+      state.hits.push({ x: x, y: y, sat: s });
+    }
+  }
+
+  // Real subsolar point -> shaded night hemisphere via a coarse per-column
+  // scan. At longitude offset dLon from the subsolar point, illumination
+  // sign is sin(lat)sin(sLat) + cos(lat)cos(sLat)cos(dLon); solving for its
+  // zero gives the terminator latitude at that column. Which side is night
+  // follows from the pole's own illumination (sin(sLat) at lat=90).
+  function drawTerminator(subsolar, b, size) {
+    var sLat = subsolar.lat * Math.PI / 180, sLon = subsolar.lon;
+    var tanSLat = Math.tan(sLat);
+    var northPoleLit = sLat > 0;
+    ctx.fillStyle = "rgba(2,5,10,.55)";
+    var step = 6;
+    for (var px = 0; px < size.w; px += step) {
+      var lon = b[0] + (px / size.w) * (b[2] - b[0]);
+      var dLon = (lon - sLon) * Math.PI / 180;
+      var cosD = Math.cos(dLon);
+      var boundaryDeg = Math.abs(tanSLat) < 1e-6
+        ? (cosD >= 0 ? 90 : -90)
+        : Math.atan(-cosD / tanSLat) * 180 / Math.PI;
+      var by = Math.max(0, Math.min(size.h, projY(boundaryDeg, b, size.h)));
+      if (northPoleLit) {
+        ctx.fillRect(px, by, step, size.h - by); // south of the boundary is night
+      } else {
+        ctx.fillRect(px, 0, step, by); // north of the boundary is night
+      }
+    }
+  }
+
+  function fmtCount(n) { return n === null || n === undefined ? "—" : String(n); }
+
+  function renderList(filterText) {
+    var d = state.next;
+    var box = document.getElementById("sat-list");
+    if (!d) { return; }
+    var q = (filterText || "").trim().toLowerCase();
+    var rows = (d.satellites || []).filter(function (s) {
+      return !q || s.name.toLowerCase().indexOf(q) !== -1 || String(s.norad_id).indexOf(q) !== -1;
+    });
+    if (!rows.length) {
+      box.innerHTML = '<div style="padding:12px;color:var(--muted);">No match.</div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (s) {
+      var cls = "sat-row" + (s.norad_id === trackedId ? " tracked" : "") + (s.visible ? " vis" : "") +
+        (state.selected === s.norad_id ? " sel" : "");
+      return '<div class="' + cls + '" data-id="' + s.norad_id + '">' +
+        '<span class="n">' + s.name.replace(/[<>&]/g, "") + '</span>' +
+        '<span class="e">' + s.elevation_deg.toFixed(0) + '°</span></div>';
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll(".sat-row"), function (row) {
+      row.addEventListener("click", function () {
+        select(Number(row.getAttribute("data-id")));
+        if (window.matchMedia("(max-width:860px)").matches) {
+          document.getElementById("side").classList.remove("open");
+        }
+      });
+    });
+  }
+
+  function select(noradId) {
+    state.selected = noradId;
+    var d = state.next;
+    var sat = d && (d.satellites || []).filter(function (s) { return s.norad_id === noradId; })[0];
+    showCard(sat || null);
+    if (sat) { fetchTrack(noradId); }
+    renderList(document.getElementById("search").value);
+    render();
+  }
+
+  function fetchTrack(noradId) {
+    state.selectedTrack = null;
+    fetch("/api/overhead/track?norad_id=" + noradId + "&minutes=100", { headers: { "ngrok-skip-browser-warning": "1" } })
+      .then(function (r) { if (!r.ok) throw new Error("track " + r.status); return r.json(); })
+      .then(function (d) { state.selectedTrack = d.track; render(); })
+      .catch(function () { state.selectedTrack = null; });
+  }
+
+  function showCard(sat) {
+    var card = document.getElementById("sat-card");
+    if (!sat) { card.style.display = "none"; return; }
+    card.style.display = "block";
+    card.innerHTML =
+      '<span class="close" id="card-close">&times;</span>' +
+      "<h3>" + sat.name.replace(/[<>&]/g, "") + "</h3>" +
+      '<div class="sub">NORAD ' + sat.norad_id + " · REAL SGP4 STATE</div>" +
+      '<div class="r"><span>Sub-point</span><b>' + sat.lat.toFixed(2) + "°, " + sat.lon.toFixed(2) + "°</b></div>" +
+      '<div class="r"><span>Altitude</span><b>' + sat.altitude_km.toFixed(1) + " km</b></div>" +
+      '<div class="r"><span>Velocity</span><b>' + sat.velocity_km_s.toFixed(2) + " km/s</b></div>" +
+      '<div class="r"><span>Elevation</span><b>' + sat.elevation_deg.toFixed(2) + "°</b></div>" +
+      '<div class="r"><span>Azimuth</span><b>' + sat.azimuth_deg.toFixed(2) + "°</b></div>" +
+      '<div class="r"><span>Footprint</span><b>' + sat.footprint_radius_km.toFixed(0) + " km</b></div>" +
+      '<div class="r"><span>Inclination</span><b>' + (sat.inclination_deg === null ? "n/a" : sat.inclination_deg.toFixed(2) + "°") + "</b></div>" +
+      '<div class="r"><span>Period</span><b>' + (sat.period_minutes === null ? "n/a" : sat.period_minutes.toFixed(1) + " min") + "</b></div>" +
+      '<button id="card-goto">CENTER MAP HERE</button>';
+    document.getElementById("card-close").addEventListener("click", function () {
+      state.selected = null; state.selectedTrack = null; card.style.display = "none";
+      renderList(document.getElementById("search").value); render();
+    });
+    document.getElementById("card-goto").addEventListener("click", function () {
+      view.cx = sat.lon; view.cy = sat.lat; render();
+    });
+  }
+
+  function load() {
+    fetch("/api/overhead?offset_minutes=" + state.offset, { headers: { "ngrok-skip-browser-warning": "1" } })
+      .then(function (r) { if (!r.ok) { throw new Error("overhead " + r.status); } return r.json(); })
+      .then(function (d) {
+        state.prev = state.next; state.prevAt = state.nextAt;
+        state.next = d; state.nextAt = performance.now();
+        if (!state.prev) { state.prevAt = state.nextAt - 1; }
+        document.getElementById("side-foot").textContent =
+          d.total_count + " tracked · " + d.visible_count + " above horizon" + (d.stale ? " · stale TLE cache" : "");
+        document.getElementById("callout").textContent =
+          d.total_count + " satellites · real SGP4 · " + (state.offset === 0 ? "live" : (state.offset > 0 ? "+" : "") + state.offset + " min");
+        renderList(document.getElementById("search").value);
+        if (state.selected) {
+          var found = (d.satellites || []).filter(function (s) { return s.norad_id === state.selected; })[0];
+          if (found) { showCard(found); }
+        }
+      })
+      .catch(function () {
+        document.getElementById("callout").textContent = "Live orbital layer unavailable (no TLE source reachable).";
+      });
+  }
+
+  // ---- interaction: pan (drag), zoom (wheel + buttons), click-select ----
+  canvas.addEventListener("mousedown", function (e) {
+    state.dragging = true; canvas.classList.add("dragging");
+    state.dragStart = { x: e.clientX, y: e.clientY };
+    state.dragOrigin = { cx: view.cx, cy: view.cy };
+  });
+  window.addEventListener("mouseup", function () { state.dragging = false; canvas.classList.remove("dragging"); });
+  window.addEventListener("mousemove", function (e) {
+    if (!state.dragging) return;
+    var dx = e.clientX - state.dragStart.x, dy = e.clientY - state.dragStart.y;
+    view.cx = state.dragOrigin.cx - dx * view.degPerPx;
+    view.cy = Math.max(-89, Math.min(89, state.dragOrigin.cy + dy * view.degPerPx));
+    view.cx = ((view.cx + 180) % 360 + 360) % 360 - 180;
+  });
+  canvas.addEventListener("click", function (event) {
+    if (state.dragStart && Math.abs(event.clientX - state.dragStart.x) > 3) { return; }
+    var rect = canvas.getBoundingClientRect();
+    var mx = event.clientX - rect.left, my = event.clientY - rect.top;
+    var best = null, bestDist = 14;
+    for (var i = 0; i < state.hits.length; i++) {
+      var h = state.hits[i];
+      var dist = Math.sqrt((h.x - mx) * (h.x - mx) + (h.y - my) * (h.y - my));
+      if (dist < bestDist) { bestDist = dist; best = h.sat; }
+    }
+    if (best) { select(best.norad_id); }
+  });
+  function zoom(factor) {
+    // The wrap-around projection in projX() only places each longitude once
+    // per 360deg cycle; letting the visible bbox span more of the world than
+    // that breaks it (duplicated/collapsed geometry). Cap degPerPx so the
+    // canvas's own current width can never request more than ~340deg.
+    var w = canvas.clientWidth || 800;
+    var maxDegPerPx = 340 / w;
+    view.degPerPx = Math.max(0.01, Math.min(maxDegPerPx, view.degPerPx * factor));
+  }
+  canvas.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    zoom(e.deltaY > 0 ? 1.12 : 0.89);
+  }, { passive: false });
+  document.getElementById("zoom-in").addEventListener("click", function () { zoom(0.8); });
+  document.getElementById("zoom-out").addEventListener("click", function () { zoom(1.25); });
+  document.getElementById("zoom-reset").addEventListener("click", function () { view.cx = 25; view.cy = 5; view.degPerPx = 0.11; });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-layer]"), function (input) {
+    input.addEventListener("change", function () {
+      var key = input.getAttribute("data-layer");
+      if (key === "sar" || key === "ais") {
+        input.checked = false;
+        window.alert("No SAR or AIS feed is connected to Aries. These toggles refuse to switch on rather than silently doing nothing.");
+        return;
+      }
+      state.layers[key] = input.checked;
+    });
+  });
+
+  document.getElementById("search").addEventListener("input", function (e) {
+    renderList(e.target.value);
+  });
+
+  var sideEl = document.getElementById("side");
+  var sideToggle = document.getElementById("side-toggle");
+  sideToggle.addEventListener("click", function () { sideEl.classList.toggle("open"); });
+
+  var slider = document.getElementById("tl");
+  var sliderLabel = document.getElementById("tl-label");
+  slider.addEventListener("input", function () {
+    state.offset = Number(slider.value);
+    sliderLabel.textContent = state.offset === 0 ? "NOW" : (state.offset > 0 ? "+" : "") + state.offset + " MIN";
+  });
+  slider.addEventListener("change", load);
+  document.getElementById("tl-reset").addEventListener("click", function () {
+    slider.value = 0; state.offset = 0; sliderLabel.textContent = "NOW"; load();
+  });
+
+  function tick() {
+    document.getElementById("clock").textContent =
+      new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+  }
+
+  fetch("/static/land-110m.json", { headers: { "ngrok-skip-browser-warning": "1" } })
+    .then(function (r) { return r.json(); })
+    .then(function (rings) { state.land = rings; })
+    .catch(function () { state.land = null; });
+
+  window.addEventListener("resize", render);
+  tick(); setInterval(tick, 1000);
+  load(); setInterval(function () { if (state.offset === 0) { load(); } }, 2500);
+
+  (function raf() { render(); requestAnimationFrame(raf); })();
+})();
+</script>
+</body>
+</html>

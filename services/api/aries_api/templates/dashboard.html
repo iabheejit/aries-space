@@ -5,34 +5,165 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aries Stage 0 Testbed</title>
   <style>
-    :root { --ink:#17212b; --muted:#66737f; --line:#d8e0e5; --paper:#f4f7f8; --surface:#fff; --navy:#102a3a; --cyan:#12a8b5; --green:#16845b; --amber:#a85f10; --red:#a83b32; }
-    * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--paper); font-family:"Avenir Next",Avenir,sans-serif; letter-spacing:0; }
-    header { color:#f6fbfc; background:var(--navy); border-bottom:4px solid var(--cyan); } .inner,main { width:min(1380px,calc(100% - 48px)); margin:auto; }
-    .inner { min-height:132px; display:flex; align-items:center; justify-content:space-between; gap:32px; padding:24px 0; } h1 { margin:3px 0; font-size:2.6rem; }
-    .kicker,th,.label { font:700 .72rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; } .kicker { color:var(--cyan); } .subtitle,.source { color:var(--muted); font-size:.8rem; }
-    header .subtitle { color:#b9cbd3; } main { padding:34px 0 52px; } section { margin-bottom:38px; } .section-head { display:flex; justify-content:space-between; align-items:end; border-bottom:2px solid var(--ink); padding-bottom:11px; margin-bottom:13px; }
-    h2 { margin:2px 0; font-size:1.2rem; } .health { display:grid; grid-template-columns:1fr 1fr 2fr; border:1px solid var(--line); background:var(--surface); border-radius:6px; overflow:hidden; }
-    .stat { padding:20px 22px; border-right:1px solid var(--line); } .value { margin-top:7px; font:700 1.35rem "SFMono-Regular",Consolas,monospace; overflow-wrap:anywhere; }
-    .table-wrap { overflow:auto; border:1px solid var(--line); background:var(--surface); border-radius:6px; } table { width:100%; min-width:720px; border-collapse:collapse; } th,td { padding:13px 16px; text-align:left; border-bottom:1px solid #e7ecef; } td { font: .82rem "SFMono-Regular",Consolas,monospace; }
-    .empty,.warning { padding:18px; background:var(--surface); border:1px solid var(--line); } .warning { color:#793e05; border-left:4px solid var(--amber); } a { color:#087584; font-weight:700; }
-    .comparison { display:grid; grid-template-columns:minmax(220px,.8fr) repeat(2,minmax(260px,1fr)); border:1px solid var(--line); background:var(--surface); border-radius:6px; overflow:hidden; }
-    .money { padding:24px; background:var(--navy); color:#fff; } .money .label { color:#9bcbd0; } .drf { margin:9px 0 4px; font:700 2.4rem "SFMono-Regular",Consolas,monospace; } .money-copy { color:#c6d6dc; line-height:1.45; font-size:.86rem; }
-    .target { padding:24px; border-left:1px solid var(--line); } .target-head { display:flex; justify-content:space-between; gap:12px; align-items:start; } .target h3 { margin:0; font-size:1rem; }
-    .badge { padding:4px 7px; border:1px solid currentColor; font:700 .67rem "SFMono-Regular",Consolas,monospace; } .badge.simulated { color:var(--red); } .badge.estimated { color:var(--amber); }
-    .metric-list { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:22px; } .metric-value { display:block; margin-top:4px; font:700 1rem "SFMono-Regular",Consolas,monospace; }
-    .recommendation { margin:0; padding:18px 22px; border:1px solid var(--line); border-top:0; background:#eef8f4; line-height:1.5; } .assumptions { color:var(--muted); font-size:.78rem; margin-top:8px; }
-    @media(max-width:900px) { .comparison { grid-template-columns:1fr; } .target { border-left:0; border-top:1px solid var(--line); } }
-    @media(max-width:760px) { .inner,main { width:calc(100% - 28px); } .inner,.section-head { align-items:flex-start; flex-direction:column; } .health { grid-template-columns:1fr; } .stat { border-bottom:1px solid var(--line); } .metric-list { grid-template-columns:1fr; } }
+    :root {
+      --bg:#080c12; --panel:#0e1620; --panel-alt:#101c28; --line:#1d2c3a;
+      --ink:#dce8ef; --muted:#6d8497; --cyan:#35c9d6; --cyan-dim:#1c8894;
+      --green:#3ddc97; --amber:#f0a83c; --red:#ff6b60;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Avenir Next",Avenir,sans-serif; }
+    header { background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 1px 0 var(--cyan-dim); }
+    .inner,.grid,.stat-strip { width:min(1440px,calc(100% - 48px)); margin:auto; }
+    .inner { min-height:100px; display:flex; align-items:center; justify-content:space-between; gap:32px; padding:18px 0; flex-wrap:wrap; }
+    h1 { margin:3px 0; font-size:1.7rem; letter-spacing:.02em; color:#f4fbfc; }
+    .kicker,th,.label { font:700 .68rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.08em; }
+    .kicker { color:var(--cyan); }
+    .subtitle,.source { color:var(--muted); font-size:.78rem; font-family:"SFMono-Regular",Consolas,monospace; }
+    .live-chip { display:flex; align-items:center; gap:8px; padding:7px 14px; border:1px solid var(--line); border-radius:4px; background:var(--panel-alt); font:700 .66rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.08em; color:var(--green); }
+    .live-chip .dot { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); }
+    .page-links { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0 0; }
+    .page-links a { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1px solid var(--line); border-radius:4px; background:var(--panel); font:700 .66rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--cyan); text-decoration:none; }
+    .page-links a:hover { border-color:var(--cyan); }
+    .page-links a span.arrow { color:var(--muted); }
+    main { padding:22px 0 0; }
+    .grid { display:grid; grid-template-columns:340px 1fr; gap:18px; align-items:start; padding-bottom:22px; }
+    .col { display:flex; flex-direction:column; gap:18px; min-width:0; }
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:8px; overflow:hidden; }
+    .panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:14px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    h2 { margin:2px 0 0; font-size:.98rem; color:#f4fbfc; letter-spacing:.01em; }
+    .health { display:grid; grid-template-columns:1fr 1fr; }
+    .stat { padding:16px 18px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .stat:nth-child(2n) { border-right:0; }
+    .stat:last-child,.stat:nth-last-child(2):nth-child(odd) { border-bottom:0; }
+    .value { margin-top:6px; font:700 1.15rem "SFMono-Regular",Consolas,monospace; overflow-wrap:anywhere; color:#f4fbfc; }
+    .table-wrap { overflow:auto; }
+    table { width:100%; min-width:520px; border-collapse:collapse; }
+    th,td { padding:11px 16px; text-align:left; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); }
+    td { font:.8rem "SFMono-Regular",Consolas,monospace; font-variant-numeric:tabular-nums; }
+    tbody tr:last-child td { border-bottom:0; }
+    .empty,.warning { padding:16px 18px; }
+    .warning { color:var(--amber); border-left:3px solid var(--amber); }
+    a { color:var(--cyan); font-weight:700; }
+    .comparison-head { padding:18px; background:var(--panel-alt); color:#fff; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; }
+    .comparison-head .label { color:var(--cyan); }
+    .drf { margin:9px 0 4px; font:700 2rem "SFMono-Regular",Consolas,monospace; color:#f4fbfc; }
+    .rec-chip { text-align:right; }
+    .rec-chip .rec-value { font:700 1.05rem "SFMono-Regular",Consolas,monospace; }
+    .rec-chip .rec-value.edge { color:var(--cyan); }
+    .rec-chip .rec-value.ground { color:var(--amber); }
+    .cost-table { overflow:auto; }
+    .cost-table table { min-width:480px; }
+    .cost-table th,.cost-table td { padding:11px 18px; text-align:right; font:.82rem "SFMono-Regular",Consolas,monospace; font-variant-numeric:tabular-nums; }
+    .cost-table th:first-child,.cost-table td:first-child { text-align:left; font-family:"Avenir Next",Avenir,sans-serif; font-weight:600; color:var(--ink); }
+    .cost-table thead th { font:700 .64rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .cost-table tr.total td { font-weight:700; border-top:1px solid var(--cyan-dim); background:var(--panel-alt); color:#f4fbfc; }
+    .cost-table td.dash { color:var(--muted); }
+    .badge { padding:4px 8px; border:1px solid currentColor; border-radius:3px; font:700 .63rem "SFMono-Regular",Consolas,monospace; letter-spacing:.04em; }
+    .badge.simulated { color:var(--red); }
+    .badge.estimated { color:var(--amber); }
+    .badge.measured { color:var(--green); }
+    .badge-row { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .sensitivity { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-top:1px solid var(--line); }
+    .sensitivity .cell { padding:14px 18px; background:var(--panel); }
+    .sensitivity .cell .label { color:var(--muted); }
+    .sensitivity .cell .metric-value { display:block; margin-top:4px; font:700 .95rem "SFMono-Regular",Consolas,monospace; color:#f4fbfc; font-variant-numeric:tabular-nums; }
+    .recommendation { margin:0; padding:16px 18px; border-top:1px solid var(--line); background:var(--panel-alt); line-height:1.55; color:var(--ink); font-size:.92rem; }
+    .assumptions { color:var(--muted); font-size:.76rem; margin-top:8px; display:block; }
+    .stat-strip { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:32px; }
+    .strip-cell { background:var(--panel); padding:14px 18px; }
+    .strip-cell .label { color:var(--muted); }
+    .strip-cell .value { margin-top:5px; font-size:1.1rem; }
+    .strip-cell .value.rec-edge { color:var(--cyan); }
+    .strip-cell .value.rec-ground { color:var(--amber); }
+    @media(max-width:1100px) { .grid { grid-template-columns:1fr; } .stat-strip { grid-template-columns:repeat(3,1fr); } }
+    @media(max-width:760px) { .inner,.grid,.stat-strip { width:calc(100% - 28px); } .inner { align-items:flex-start; flex-direction:column; } .health { grid-template-columns:1fr; } .stat { border-right:0 !important; } .cost-table th,.cost-table td { padding:10px 10px; } .stat-strip { grid-template-columns:1fr 1fr; } }
   </style>
 </head>
 <body>
-  <header><div class="inner"><div><p class="kicker">Orbital Edge Benchmark</p><h1>Aries Stage 0</h1><p class="subtitle">{{ satellite_name }} · NORAD {{ norad_id }} · {{ station_name }} · {{ station_lat }}, {{ station_lon }} · {{ station_elev_m }}m</p></div></div></header>
+  <header><div class="inner">
+    <div><p class="kicker">Orbital Edge Benchmark</p><h1>Aries Stage 0</h1><p class="subtitle">{{ satellite_name }} · NORAD {{ norad_id }} · {{ station_name }} · {{ station_lat }}, {{ station_lon }} · {{ station_elev_m }}m</p>
+      <nav class="page-links">
+        <a href="/dashboard/orbital-iq">Orbital IQ <span class="arrow">&rarr;</span></a>
+        <a href="/dashboard/events">Events <span class="arrow">&rarr;</span></a>
+        <a href="/dashboard/map">Fusion Map <span class="arrow">&rarr;</span></a>
+        <a href="/dashboard/commercial">Commercial Ops <span class="arrow">&rarr;</span></a>
+      </nav>
+    </div>
+    <div class="live-chip"><span class="dot"></span>Live</div>
+  </div></header>
   <main>
     {% if database_error %}<p class="warning" role="alert">{{ database_error }}</p>{% endif %}
-    <section><div class="section-head"><div><p class="kicker">System 01</p><h2>Mission Health</h2></div><span class="source">PostgreSQL operational record</span></div><div class="health"><div class="stat"><div class="label">Observations / 24h</div><div class="value">{{ status.observations_ingested_last_24h }}</div></div><div class="stat"><div class="label">Observations / Total</div><div class="value">{{ status.observations_total }}</div></div><div class="stat"><div class="label">Last Observation Stored</div><div class="value">{{ status.last_successful_ingestion or "No rows ingested" }}</div></div></div></section>
-    <section><div class="section-head"><div><p class="kicker">Decision 02</p><h2>Benchmark Comparison</h2></div><span class="source">{% if benchmark %}{{ benchmark.workload.name }} · same payload · two execution models{% else %}Same payload · two execution models{% endif %}</span></div>{% if benchmark %}{% set edge = benchmark.runs | selectattr('target_slug', 'equalto', 'edge-sim') | first %}{% set ground = benchmark.runs | selectattr('target_slug', 'equalto', 'ground-cpu') | first %}<div class="comparison"><div class="money"><div class="label">Data Reduction Factor</div><div class="drf">{{ "%.2f"|format(edge.data_reduction_factor) }}×</div><p class="money-copy">{{ edge.downlink_saved_bytes }} bytes avoided per run from {{ benchmark.dataset.aoi_name or (benchmark.dataset.source ~ ' dataset ' ~ benchmark.dataset.external_id) }}.</p></div>{% for run in [ground, edge] %}<article class="target"><div class="target-head"><div><p class="kicker">{{ run.target_slug }}</p><h3>{{ run.target_name }}</h3></div><span class="badge {{ run.power_source }}">{{ run.power_source | upper }}</span></div><div class="metric-list"><div><span class="label">Latency</span><span class="metric-value">{{ "%.3f"|format(run.wall_ms) }} ms</span></div><div><span class="label">Energy / run</span><span class="metric-value">{{ "%.5f"|format(run.energy_joules) }} J</span></div><div><span class="label">Cost / run</span><span class="metric-value">₹{{ "%.9f"|format(run.cost_per_run_inr) }}</span></div><div><span class="label">Output</span><span class="metric-value">{{ run.output_bytes }} B</span></div></div></article>{% endfor %}</div>{% if benchmark.recommendation %}<p class="recommendation"><strong>{% if benchmark.recommendation == 'simulated_edge' %}Simulated edge wins{% else %}Ground wins{% endif %}</strong> at the configured ₹{{ benchmark.assumptions.downlink_inr_per_gb }}/GB downlink price. {% if benchmark.break_even_downlink_inr_per_gb <= 0 %}The simulated edge model is already cheaper before adding downlink cost.{% else %}Break-even: ₹{{ "%.4f"|format(benchmark.break_even_downlink_inr_per_gb) }}/GB.{% endif %}<span class="assumptions"> Model assumes {{ benchmark.assumptions.downlink_mbps }} Mbps downlink. Edge figures are simulated; ground power is estimated.</span></p>{% else %}<p class="warning">No placement recommendation: this input produced no positive data reduction. Edge figures remain simulated and ground power estimated.</p>{% endif %}{% else %}<p class="empty">{{ benchmark_error }}</p>{% endif %}</section>
-    <section><div class="section-head"><div><p class="kicker">Orbital 03</p><h2>Upcoming Passes</h2></div><span class="source">Celestrak TLE · Skyfield</span></div>{% if passes_error %}<p class="warning">Pass prediction unavailable: {{ passes_error }}</p>{% elif tle_stale %}<p class="warning">Showing passes computed from a cached (stale) TLE.</p>{% endif %}{% if passes %}<div class="table-wrap" role="region" aria-label="Upcoming satellite passes" tabindex="0"><table><thead><tr><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Max Elevation</th><th>Direction</th></tr></thead><tbody>{% for p in passes %}<tr><td>{{ p.aos }}</td><td>{{ p.los }}</td><td>{{ p.max_elevation_deg }}°</td><td>{{ p.direction }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No upcoming passes computed yet.</p>{% endif %}</section>
-    <section><div class="section-head"><div><p class="kicker">Telemetry 04</p><h2>Recent Observations</h2></div><span class="source">SatNOGS Network API</span></div>{% if observations %}<div class="table-wrap" role="region" aria-label="Recent SatNOGS observations" tabindex="0"><table><thead><tr><th>Timestamp (UTC)</th><th>NORAD ID</th><th>Signal Quality</th><th>Raw Data</th></tr></thead><tbody>{% for o in observations %}<tr><td>{{ o.timestamp }}</td><td>{{ o.satellite_id }}</td><td>{{ o.signal_quality or "n/a" }}</td><td><a href="{{ o.satnogs_url }}" target="_blank" rel="noopener noreferrer">view on SatNOGS</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No observations ingested yet.</p>{% endif %}</section>
+    {% if benchmark %}{% set strip_edge = benchmark.runs | rejectattr('target_slug', 'equalto', 'ground-cpu') | first %}{% endif %}
+    <div class="stat-strip">
+      <div class="strip-cell"><div class="label">Observations / 24h</div><div class="value">{{ status.observations_ingested_last_24h }}</div></div>
+      <div class="strip-cell"><div class="label">Observations / Total</div><div class="value">{{ status.observations_total }}</div></div>
+      <div class="strip-cell"><div class="label">Passes Computed</div><div class="value">{{ passes|length }}</div></div>
+      <div class="strip-cell"><div class="label">Data Reduction Factor</div><div class="value">{% if strip_edge %}{{ "%.1f"|format(strip_edge.data_reduction_factor) }}×{% else %}n/a{% endif %}</div></div>
+      <div class="strip-cell"><div class="label">Placement Recommendation</div><div class="value {% if benchmark and benchmark.recommendation == 'edge' %}rec-edge{% elif benchmark and benchmark.recommendation == 'ground' %}rec-ground{% endif %}">{% if benchmark and benchmark.recommendation %}{{ benchmark.recommendation|upper }}{% else %}NO CALL{% endif %}</div></div>
+    </div>
+    <div class="grid">
+    <div class="col">
+    <div class="panel"><div class="panel-head"><div><p class="kicker">1 · Mission Health</p><h2>Mission Health</h2></div><span class="source">PostgreSQL</span></div><div class="health"><div class="stat"><div class="label">Obs / 24h</div><div class="value">{{ status.observations_ingested_last_24h }}</div></div><div class="stat"><div class="label">Obs / Total</div><div class="value">{{ status.observations_total }}</div></div><div class="stat" style="grid-column:1/-1"><div class="label">Last Observation Stored</div><div class="value">{{ status.last_successful_ingestion or "No rows ingested" }}</div></div></div></div>
+    <div class="panel"><div class="panel-head"><div><p class="kicker">3 · Orbital</p><h2>Upcoming Passes</h2></div><span class="source">Celestrak · Skyfield</span></div>{% if passes_error %}<p class="warning">Pass prediction unavailable: {{ passes_error }}</p>{% elif tle_stale %}<p class="warning">Showing passes from a cached (stale) TLE.</p>{% endif %}{% if passes %}<div class="table-wrap" role="region" aria-label="Upcoming satellite passes" tabindex="0"><table><thead><tr><th>AOS (UTC)</th><th>Max El.</th><th>Dir</th></tr></thead><tbody>{% for p in passes %}<tr><td>{{ p.aos }}</td><td>{{ p.max_elevation_deg }}°</td><td>{{ p.direction }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No upcoming passes computed yet.</p>{% endif %}</div>
+    </div>
+    <div class="col">
+    <div class="panel">
+      <div class="panel-head"><div><p class="kicker">2 · Edge Economics</p><h2>Benchmark Comparison</h2></div><span class="source">{% if benchmark %}{{ benchmark.workload.name }} · same payload · two execution models{% else %}Same payload · two execution models{% endif %}</span></div>
+      {% if benchmark %}
+      {% set edge = benchmark.runs | rejectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+      {% set ground = benchmark.runs | selectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+      {% set timing_measured = 'measured' in edge.result.execution.timing_basis %}
+      {% set electricity = benchmark.assumptions.electricity_inr_per_kwh %}
+      {% set downlink_price = benchmark.assumptions.downlink_inr_per_gb %}
+      {% set ground_energy_inr = ground.energy_joules / 3600000 * electricity %}
+      {% set ground_compute_inr = ground.cost_per_run_inr - ground_energy_inr %}
+      {% set edge_energy_inr = edge.energy_joules / 3600000 * electricity %}
+      {% set edge_hardware_inr = edge.cost_per_run_inr - edge_energy_inr %}
+      {% set ground_downlink_inr = ground.input_bytes / 1000000000 * downlink_price %}
+      {% set edge_downlink_inr = edge.output_bytes / 1000000000 * downlink_price %}
+      {% set downlink_saved_inr = ground_downlink_inr - edge_downlink_inr %}
+      {% set ground_total_inr = ground.cost_per_run_inr + ground_downlink_inr %}
+      {% set edge_total_inr = edge.cost_per_run_inr + edge_downlink_inr %}
+      {% set edge_capex_per_run = benchmark.assumptions.edge_hardware_capex_per_run_inr %}
+      {% set edge_lifetime_days = benchmark.assumptions.edge_hardware_lifetime_hours / 24 %}
+      {% set capex_headroom_inr = ground_total_inr - edge_downlink_inr - edge_energy_inr %}
+      {% if capex_headroom_inr > 0 %}
+      {% set breakeven_runs_per_day = benchmark.assumptions.edge_hardware_capex_inr / capex_headroom_inr / edge_lifetime_days %}
+      {% endif %}
+      <div class="comparison-head">
+        <div><div class="label">{{ benchmark.workload.name }} · Data Reduction Factor</div><div class="drf">{{ "%.2f"|format(edge.data_reduction_factor) }}×</div></div>
+        <div class="rec-chip"><div class="label">Recommended</div><div class="rec-value {{ benchmark.recommendation or 'none' }}">{% if benchmark.recommendation == 'edge' %}EDGE{% elif benchmark.recommendation == 'ground' %}GROUND{% else %}NO CALL{% endif %}</div></div>
+      </div>
+      <div class="cost-table">
+        <table>
+          <thead><tr><th>Cost / run</th><th>Ground</th><th>Edge</th></tr></thead>
+          <tbody>
+            <tr><td>Compute (rental)</td><td>₹{{ "%.9f"|format(ground_compute_inr) }}</td><td class="dash">—</td></tr>
+            <tr><td>Energy</td><td>₹{{ "%.9f"|format(ground_energy_inr) }}</td><td>₹{{ "%.9f"|format(edge_energy_inr) }}</td></tr>
+            <tr><td>Hardware (amortized)</td><td class="dash">—</td><td>₹{{ "%.9f"|format(edge_hardware_inr) }}</td></tr>
+            <tr><td>Downlink saved vs. ground</td><td class="dash">—</td><td>₹{{ "%.9f"|format(downlink_saved_inr) }}</td></tr>
+            <tr class="total"><td>Total / insight</td><td>₹{{ "%.9f"|format(ground_total_inr) }}</td><td>₹{{ "%.9f"|format(edge_total_inr) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sensitivity">
+        <div class="cell"><span class="label">Break-even utilization</span><span class="metric-value">{% if breakeven_runs_per_day is defined %}{{ "%.2f"|format(breakeven_runs_per_day) }} runs/day{% else %}already uneconomical{% endif %}</span></div>
+        <div class="cell"><span class="label">Break-even downlink price</span><span class="metric-value">{% if benchmark.break_even_downlink_inr_per_gb is not none %}₹{{ "%.4f"|format(benchmark.break_even_downlink_inr_per_gb) }}/GB{% else %}n/a{% endif %}</span></div>
+        <div class="cell"><span class="label">Confidence</span><span class="metric-value"><span class="badge-row"><span class="badge {{ 'measured' if timing_measured else 'simulated' }}">{{ 'MEASURED' if timing_measured else 'SIMULATED' }} EXEC</span><span class="badge estimated">ESTIMATED HARDWARE</span></span></span></div>
+      </div>
+      {% if benchmark.recommendation %}
+      <p class="recommendation"><strong>{% if benchmark.recommendation == 'edge' %}{{ edge.target_name }} wins{% else %}Ground wins{% endif %}</strong> at the configured ₹{{ downlink_price }}/GB downlink price, edge hardware amortized at ₹{{ "%.2f"|format(edge_capex_per_run) }}/run (assumes {{ benchmark.assumptions.edge_expected_runs_per_day }} run/day over {{ "%.1f"|format(edge_lifetime_days / 365) }} years). {% if benchmark.break_even_downlink_inr_per_gb <= 0 %}The {{ edge.target_name }} model is already cheaper before adding downlink cost.{% else %}Break-even downlink: ₹{{ "%.4f"|format(benchmark.break_even_downlink_inr_per_gb) }}/GB.{% endif %} {% if breakeven_runs_per_day is defined %}{% if benchmark.recommendation == 'edge' %}It flips to ground if the hardware is used fewer than {{ "%.2f"|format(breakeven_runs_per_day) }} times/day.{% else %}It would flip to edge if the hardware were used more than {{ "%.2f"|format(breakeven_runs_per_day) }} times/day.{% endif %}{% else %}No realistic utilization makes edge cheaper here -- ground wins at any duty cycle under current assumptions.{% endif %}<span class="assumptions">Model assumes {{ benchmark.assumptions.downlink_mbps }} Mbps downlink. {% if timing_measured %}Edge timing here is measured from a real run, not simulated; power and hardware cost for both sides are still estimates.{% else %}Edge timing here is simulated (modeled from the ground baseline), not from a real run; power and hardware cost for both sides are estimates.{% endif %}</span></p>
+      {% else %}
+      <p class="warning">No placement recommendation: this input produced no positive data reduction. {% if timing_measured %}Edge timing here is measured from a real run, not simulated; power and hardware cost for both sides are still estimates.{% else %}Edge timing here is simulated (modeled from the ground baseline), not from a real run; power and hardware cost for both sides are estimates.{% endif %}</p>
+      {% endif %}
+      {% else %}
+      <p class="empty">{{ benchmark_error }}</p>
+      {% endif %}
+    </div>
+    <div class="panel"><div class="panel-head"><div><p class="kicker">4 · Telemetry</p><h2>Recent Observations</h2></div><span class="source">SatNOGS Network API</span></div>{% if observations %}<div class="table-wrap" role="region" aria-label="Recent SatNOGS observations" tabindex="0"><table><thead><tr><th>Timestamp (UTC)</th><th>NORAD ID</th><th>Signal Quality</th><th>Raw Data</th></tr></thead><tbody>{% for o in observations %}<tr><td>{{ o.timestamp }}</td><td>{{ o.satellite_id }}</td><td>{{ o.signal_quality or "n/a" }}</td><td><a href="{{ o.satnogs_url }}" target="_blank" rel="noopener noreferrer">view on SatNOGS</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No observations ingested yet.</p>{% endif %}</div>
+    </div>
+    </div>
   </main>
 </body>
 </html>

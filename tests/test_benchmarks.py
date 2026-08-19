@@ -94,6 +94,29 @@ def test_benchmark_pair_has_two_honestly_labeled_runs(benchmark_context):
     assert len([key for key in store.objects if key[0] == "results"]) == 2
 
 
+def test_edge_is_charged_amortized_hardware_cost_not_just_electricity(
+    benchmark_context,
+):
+    # TCO fix regression guard: edge must not be modeled as free compute.
+    # Before this fix, edge's cost_per_run_inr was electricity only, which
+    # structurally guaranteed a 0-cost-basis break-even regardless of the
+    # workload. The disclosed CAPEX assumption must be visible and must
+    # actually be reflected in the persisted cost.
+    session, store, dataset_id = benchmark_context
+
+    pair = run_benchmark_pair(session, store, dataset_id)
+    payload = serialize_pair(session, pair)
+
+    assert payload["assumptions"]["edge_hardware_capex_per_run_inr"] == pytest.approx(
+        config.EDGE_HARDWARE_CAPEX_INR / config.EDGE_EXPECTED_TOTAL_RUNS
+    )
+    edge = next(run for run in payload["runs"] if run["target_slug"] == "edge-sim")
+    electricity_only_cost = (
+        edge["energy_joules"] / 3_600_000 * config.ELECTRICITY_INR_PER_KWH
+    )
+    assert edge["cost_per_run_inr"] > electricity_only_cost
+
+
 def test_second_target_failure_rolls_back_pair_and_results(
     benchmark_context, monkeypatch
 ):
@@ -232,12 +255,48 @@ def test_sentinel2_benchmark_pair_produces_real_recommendation(
     # Real Sentinel-2 pixel crop in, tiny NDVI summary JSON out -- unlike the
     # SatNOGS metadata proxy, this workload has a genuine data-reduction
     # story, so a recommendation and break-even price must be computable.
-    assert payload["recommendation"] in {"ground", "simulated_edge"}
+    assert payload["recommendation"] in {"ground", "edge"}
     assert payload["break_even_downlink_inr_per_gb"] is not None
     assert payload["break_even_downlink_inr_per_gb"] >= 0
     for run in payload["runs"]:
         assert run["data_reduction_factor"] > 10
         assert run["downlink_saved_bytes"] > 0
+
+
+def test_placement_frontier_workloads_land_near_the_boundary(
+    multi_aoi_benchmark_context,
+):
+    # Placement-frontier workloads are deliberately NOT detection/summary
+    # tasks -- their real output is the (compressed) data itself. This test
+    # locks in that they land where the analysis predicted, not collapsed
+    # to either extreme (a regression here would mean the workload silently
+    # started behaving like a detection workload, defeating its purpose).
+    session, store, agricultural_id, _coastal_id = multi_aoi_benchmark_context
+
+    recompress_pair = run_benchmark_pair(
+        session, store, agricultural_id, workload_slug="sentinel2-lossless-recompress"
+    )
+    quicklook_pair = run_benchmark_pair(
+        session, store, agricultural_id, workload_slug="sentinel2-quicklook-thumbnail"
+    )
+
+    recompress_payload = serialize_pair(session, recompress_pair)
+    quicklook_payload = serialize_pair(session, quicklook_pair)
+
+    for run in recompress_payload["runs"]:
+        assert 1.0 < run["data_reduction_factor"] < 3.0
+        assert "compressed_bytes" not in run["result"]
+        assert run["result"]["compressed_bytes_size"] == run["output_bytes"]
+
+    for run in quicklook_payload["runs"]:
+        assert 5.0 < run["data_reduction_factor"] < 40.0
+        assert run["result"]["thumbnail_raster"]["width"] == 32
+
+    # Both are real, unforced numbers -- confirm they're genuinely different
+    # from each other and from the existing detection-workload cluster.
+    recompress_drf = recompress_payload["runs"][0]["data_reduction_factor"]
+    quicklook_drf = quicklook_payload["runs"][0]["data_reduction_factor"]
+    assert quicklook_drf > recompress_drf * 5
 
 
 def test_satnogs_dataset_is_ineligible_for_sentinel2_workload(benchmark_context):
@@ -269,6 +328,54 @@ def test_cloud_mask_and_ship_detect_run_against_the_right_aoi(
         assert "cloud_fraction" in run["result"]
     for run in ship_payload["runs"]:
         assert "bright_pixel_count" in run["result"]
+
+
+def test_landcover_classifier_produces_two_genuinely_measured_runs(
+    multi_aoi_benchmark_context,
+):
+    session, store, agricultural_id, _coastal_id = multi_aoi_benchmark_context
+
+    pair = run_benchmark_pair(
+        session, store, agricultural_id, workload_slug="sentinel2-landcover-classifier"
+    )
+    payload = serialize_pair(session, pair)
+
+    assert pair.status == "completed"
+    assert {run["target_slug"] for run in payload["runs"]} == {
+        "ground-cpu",
+        "edge-measured-mac",
+    }
+    # Neither target is a formula-derived slowdown: both genuinely executed
+    # the ONNX model and were timed independently.
+    for run in payload["runs"]:
+        assert run["power_source"] == "estimated"
+        assert "class_pixel_fraction" in run["result"]
+        assert run["result"]["dominant_class"] in {"vegetation", "bare_soil", "cloud"}
+    edge = next(run for run in payload["runs"] if run["target_slug"] == "edge-measured-mac")
+    assert edge["model_version"] == "onnx-edge-constrained-v1"
+    assert payload["assumptions"]["edge_measured_watts"] == pytest.approx(config.EDGE_MEASURED_WATTS)
+    assert "edge_sim_watts" not in payload["assumptions"]
+    assert payload["recommendation"] in {"ground", "edge", None}
+
+
+def test_existing_workloads_still_use_formula_derived_edge_sim(
+    multi_aoi_benchmark_context,
+):
+    # Regression guard for the WorkloadSpec edge-override mechanism added
+    # alongside the landcover classifier: pre-existing workloads must be
+    # byte-for-byte unaffected -- still the simulated slowdown-factor edge,
+    # not accidentally routed through an edge_run path.
+    session, store, agricultural_id, _coastal_id = multi_aoi_benchmark_context
+
+    pair = run_benchmark_pair(session, store, agricultural_id, workload_slug="cloud-mask")
+    payload = serialize_pair(session, pair)
+
+    assert {run["target_slug"] for run in payload["runs"]} == {"ground-cpu", "edge-sim"}
+    edge = next(run for run in payload["runs"] if run["target_slug"] == "edge-sim")
+    assert edge["power_source"] == "simulated"
+    assert edge["model_version"] == "edge-sim-m4-v1"
+    assert payload["assumptions"]["edge_sim_watts"] == pytest.approx(config.EDGE_SIM_WATTS)
+    assert "edge_measured_watts" not in payload["assumptions"]
 
 
 def test_ship_detect_rejects_agricultural_aoi(multi_aoi_benchmark_context):

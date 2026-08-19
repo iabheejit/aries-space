@@ -41,7 +41,7 @@ def test_break_even_and_recommendation_boundaries():
     ) == "ground"
     assert recommendation_for_price(
         configured_downlink_inr_per_gb=500.01, break_even_inr_per_gb=price
-    ) == "simulated_edge"
+    ) == "edge"
 
 
 def test_zero_saved_bytes_refuses_recommendation():

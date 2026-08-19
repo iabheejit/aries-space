@@ -70,6 +70,21 @@ SATNOGS_MAX_RESPONSE_BYTES = _validate_positive(
 )
 SATNOGS_FIXTURE_PATH = os.environ.get("SATNOGS_FIXTURE_PATH") or None
 TLE_REFRESH_HOURS = _validate_positive("TLE_REFRESH_HOURS", _int_env("TLE_REFRESH_HOURS", 12))
+# Celestrak group backing the live overhead map. "resource" is the Earth-
+# resources/EO group -- the satellites this product is actually about.
+OVERHEAD_TLE_GROUP = os.environ.get("OVERHEAD_TLE_GROUP", "resource")
+TLE_GROUP_TIMEOUT_SECONDS = _validate_positive(
+    "TLE_GROUP_TIMEOUT_SECONDS", _int_env("TLE_GROUP_TIMEOUT_SECONDS", 30)
+)
+OVERHEAD_MIN_ELEVATION_DEG = _validate_range(
+    "OVERHEAD_MIN_ELEVATION_DEG", _float_env("OVERHEAD_MIN_ELEVATION_DEG", 0.0), -90, 90
+)
+OVERHEAD_MAX_SATELLITES = _validate_positive(
+    "OVERHEAD_MAX_SATELLITES", _int_env("OVERHEAD_MAX_SATELLITES", 200)
+)
+GROUND_TRACK_MINUTES = _validate_positive(
+    "GROUND_TRACK_MINUTES", _int_env("GROUND_TRACK_MINUTES", 100)
+)
 OBS_POLL_MINUTES = _int_env("OBS_POLL_MINUTES", 10)
 if OBS_POLL_MINUTES < 5:
     raise ConfigurationError("OBS_POLL_MINUTES must be at least 5")
@@ -95,8 +110,37 @@ ELECTRICITY_INR_PER_KWH = _float_env("ELECTRICITY_INR_PER_KWH", 8.0)
 DOWNLINK_INR_PER_GB = _float_env("DOWNLINK_INR_PER_GB", 500.0)
 GROUND_COMPUTE_INR_PER_HOUR = _float_env("GROUND_COMPUTE_INR_PER_HOUR", 100.0)
 GROUND_ESTIMATED_WATTS = _float_env("GROUND_ESTIMATED_WATTS", 25.0)
+# TCO fix (round 1): prior versions charged ground-cpu a compute-rental rate
+# but edge nothing beyond electricity, which structurally biased every
+# recommendation toward edge (edge hardware isn't free).
+#
+# TCO fix (round 2, duty-cycle): round 1 amortized edge's hardware CAPEX
+# against active compute-*time* (CAPEX / lifetime_hours, charged per
+# millisecond of actual execution) -- which implicitly assumes the hardware
+# runs near-continuously for its whole life. Real satellite payloads are
+# bursty and power-constrained; researched reference point: a cited
+# power-constrained CubeSat design runs its imaging/AI payload just one
+# orbit per day (arXiv:2501.12030). Amortizing CAPEX against *time* rather
+# than *expected uses* massively understates edge's true per-run cost for a
+# low-duty-cycle payload. Edge hardware is now charged a flat per-run
+# amortized cost instead: CAPEX / total expected runs over the mission
+# (runs/day x days in the assumed operating lifetime). Ground's rental rate
+# is untouched -- cloud compute genuinely is billed per active use, so a
+# time-proportional charge is still the correct model there.
+EDGE_HARDWARE_CAPEX_INR = _float_env("EDGE_HARDWARE_CAPEX_INR", 300_000.0)
+EDGE_HARDWARE_LIFETIME_HOURS = _float_env("EDGE_HARDWARE_LIFETIME_HOURS", 43_800.0)  # 5 years commercial design life
+# Default: 1 run/day -- the conservative, cited CubeSat-realistic reference
+# point (not Planet-scale ~100/day continuous mapping), chosen deliberately
+# as the stronger stress test of the edge-wins conclusion.
+EDGE_EXPECTED_RUNS_PER_DAY = _float_env("EDGE_EXPECTED_RUNS_PER_DAY", 1.0)
+EDGE_EXPECTED_TOTAL_RUNS = EDGE_EXPECTED_RUNS_PER_DAY * (EDGE_HARDWARE_LIFETIME_HOURS / 24.0)
+EDGE_HARDWARE_CAPEX_PER_RUN_INR = EDGE_HARDWARE_CAPEX_INR / EDGE_EXPECTED_TOTAL_RUNS
 EDGE_SIM_WATTS = _float_env("EDGE_SIM_WATTS", 15.0)
 EDGE_SIM_SLOWDOWN_FACTOR = _float_env("EDGE_SIM_SLOWDOWN_FACTOR", 4.0)
+# Estimated draw for the measured-edge stand-in (single-core-constrained
+# execution on host CPU); an efficiency-core-class estimate, disclosed as
+# an estimate even though the timing it pairs with is genuinely measured.
+EDGE_MEASURED_WATTS = _float_env("EDGE_MEASURED_WATTS", 8.0)
 BENCHMARK_TIMEOUT_SECONDS = _validate_positive(
     "BENCHMARK_TIMEOUT_SECONDS", _int_env("BENCHMARK_TIMEOUT_SECONDS", 10)
 )
@@ -166,6 +210,10 @@ for name, value in (
     ("GROUND_ESTIMATED_WATTS", GROUND_ESTIMATED_WATTS),
     ("EDGE_SIM_WATTS", EDGE_SIM_WATTS),
     ("EDGE_SIM_SLOWDOWN_FACTOR", EDGE_SIM_SLOWDOWN_FACTOR),
+    ("EDGE_MEASURED_WATTS", EDGE_MEASURED_WATTS),
+    ("EDGE_HARDWARE_CAPEX_INR", EDGE_HARDWARE_CAPEX_INR),
+    ("EDGE_HARDWARE_LIFETIME_HOURS", EDGE_HARDWARE_LIFETIME_HOURS),
+    ("EDGE_EXPECTED_RUNS_PER_DAY", EDGE_EXPECTED_RUNS_PER_DAY),
 ):
     if not isfinite(value) or value <= 0:
         raise ConfigurationError(f"{name} must be a positive finite number")

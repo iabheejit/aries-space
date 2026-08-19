@@ -142,7 +142,7 @@ def main() -> int:
     )
     assert s2_benchmark_status == 201
     assert len(s2_benchmark["runs"]) == 2
-    assert s2_benchmark["recommendation"] in {"ground", "simulated_edge"}
+    assert s2_benchmark["recommendation"] in {"ground", "edge"}
     assert s2_benchmark["break_even_downlink_inr_per_gb"] is not None
     for run in s2_benchmark["runs"]:
         assert run["data_reduction_factor"] > 1
@@ -155,6 +155,43 @@ def main() -> int:
     )
     assert cloud_benchmark_status == 201
     assert all("cloud_fraction" in run["result"] for run in cloud_benchmark["runs"])
+
+    # landcover-classifier: same agricultural dataset -- proves the
+    # genuinely-measured edge target (not the formula-derived edge-sim)
+    # works end-to-end against the live stack, not just in unit tests.
+    landcover_benchmark_status, landcover_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=sentinel2-landcover-classifier",
+        method="POST",
+    )
+    assert landcover_benchmark_status == 201
+    assert {run["target_slug"] for run in landcover_benchmark["runs"]} == {
+        "ground-cpu",
+        "edge-measured-mac",
+    }
+    assert all(
+        "class_pixel_fraction" in run["result"] for run in landcover_benchmark["runs"]
+    )
+    assert "edge_measured_watts" in landcover_benchmark["assumptions"]
+
+    # Placement-frontier workloads: real compression/decimation, not
+    # detection -- proves they land near the boundary end-to-end, not just
+    # in unit tests.
+    recompress_status, recompress_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=sentinel2-lossless-recompress",
+        method="POST",
+    )
+    assert recompress_status == 201
+    for run in recompress_benchmark["runs"]:
+        assert 1.0 < run["data_reduction_factor"] < 3.0
+        assert "compressed_bytes_size" in run["result"]
+
+    quicklook_status, quicklook_benchmark = _json_request(
+        f"/api/benchmarks?dataset_id={s2_created['dataset_id']}&workload=sentinel2-quicklook-thumbnail",
+        method="POST",
+    )
+    assert quicklook_status == 201
+    for run in quicklook_benchmark["runs"]:
+        assert 5.0 < run["data_reduction_factor"] < 40.0
 
     # ship-detect: second AOI (coastal), proves AOI-scoped eligibility works
     # end-to-end, not just in unit tests.
@@ -226,6 +263,9 @@ def main() -> int:
         | {run["result_object_key"] for run in s2_benchmark["runs"]}
         | {run["result_object_key"] for run in cloud_benchmark["runs"]}
         | {run["result_object_key"] for run in ship_benchmark["runs"]}
+        | {run["result_object_key"] for run in landcover_benchmark["runs"]}
+        | {run["result_object_key"] for run in recompress_benchmark["runs"]}
+        | {run["result_object_key"] for run in quicklook_benchmark["runs"]}
     )
     assert expected_result_keys <= {item.object_name for item in result_objects}
     with closing(minio.get_object("raw", created["object_key"])) as response:
@@ -273,6 +313,21 @@ def main() -> int:
     )
     assert ship_latest_status == 200
     assert ship_latest["pair_id"] == ship_benchmark["pair_id"]
+    landcover_latest_status, landcover_latest = _json_request(
+        "/api/benchmarks/latest?workload=sentinel2-landcover-classifier"
+    )
+    assert landcover_latest_status == 200
+    assert landcover_latest["pair_id"] == landcover_benchmark["pair_id"]
+    recompress_latest_status, recompress_latest = _json_request(
+        "/api/benchmarks/latest?workload=sentinel2-lossless-recompress"
+    )
+    assert recompress_latest_status == 200
+    assert recompress_latest["pair_id"] == recompress_benchmark["pair_id"]
+    quicklook_latest_status, quicklook_latest = _json_request(
+        "/api/benchmarks/latest?workload=sentinel2-quicklook-thumbnail"
+    )
+    assert quicklook_latest_status == 200
+    assert quicklook_latest["pair_id"] == quicklook_benchmark["pair_id"]
     print(
         json.dumps(
             {
@@ -282,6 +337,9 @@ def main() -> int:
                 "sentinel2_benchmark_pair_id": s2_benchmark["pair_id"],
                 "cloud_mask_benchmark_pair_id": cloud_benchmark["pair_id"],
                 "ship_detect_benchmark_pair_id": ship_benchmark["pair_id"],
+                "landcover_classifier_benchmark_pair_id": landcover_benchmark["pair_id"],
+                "lossless_recompress_benchmark_pair_id": recompress_benchmark["pair_id"],
+                "quicklook_thumbnail_benchmark_pair_id": quicklook_benchmark["pair_id"],
                 **created,
             },
             sort_keys=True,

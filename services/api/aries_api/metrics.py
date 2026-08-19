@@ -24,8 +24,22 @@ def calculate_run_metrics(
     downlink_mbps: float,
     electricity_inr_per_kwh: float,
     compute_inr_per_hour: float,
+    fixed_cost_inr_per_run: float = 0.0,
 ) -> RunMetrics:
-    values = (wall_ms, avg_watts, downlink_mbps, electricity_inr_per_kwh, compute_inr_per_hour)
+    # compute_inr_per_hour: a genuinely time-proportional charge (real
+    # pay-per-active-use rental, e.g. cloud compute).
+    # fixed_cost_inr_per_run: a flat per-invocation charge independent of
+    # wall_ms (e.g. owned hardware amortized against expected *uses* rather
+    # than active time -- the correct model for low-duty-cycle payloads,
+    # where the hardware cost is incurred whether or not it's running).
+    values = (
+        wall_ms,
+        avg_watts,
+        downlink_mbps,
+        electricity_inr_per_kwh,
+        compute_inr_per_hour,
+        fixed_cost_inr_per_run,
+    )
     if input_bytes <= 0 or output_bytes <= 0:
         raise MetricError("input_bytes and output_bytes must be positive")
     if any(not isfinite(value) or value < 0 for value in values):
@@ -38,6 +52,7 @@ def calculate_run_metrics(
     cost_inr = (
         energy_joules / 3_600_000 * electricity_inr_per_kwh
         + wall_ms / 3_600_000 * compute_inr_per_hour
+        + fixed_cost_inr_per_run
     )
     return RunMetrics(
         data_reduction_factor=input_bytes / output_bytes,
@@ -70,7 +85,7 @@ def recommendation_for_price(
     if break_even_inr_per_gb is None:
         return None
     return (
-        "simulated_edge"
+        "edge"
         if configured_downlink_inr_per_gb > break_even_inr_per_gb
         else "ground"
     )

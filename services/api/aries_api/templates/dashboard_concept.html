@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aries · Orbital IQ Concept</title>
+  <style>
+    :root {
+      --bg:#080c12; --panel:#0e1620; --panel-alt:#101c28; --line:#1d2c3a;
+      --ink:#dce8ef; --muted:#6d8497; --cyan:#35c9d6; --cyan-dim:#1c8894;
+      --green:#3ddc97; --amber:#f0a83c; --red:#ff6b60; --violet:#a78bfa;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Avenir Next",Avenir,sans-serif; }
+    a { color:var(--cyan); font-weight:700; text-decoration:none; }
+    .kicker,th,.label { font:700 .66rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.08em; }
+    .kicker { color:var(--cyan); }
+    .mono { font-family:"SFMono-Regular",Consolas,monospace; font-variant-numeric:tabular-nums; }
+
+    .shell { display:flex; min-height:100vh; }
+    .rail { width:212px; flex:0 0 212px; background:var(--panel); border-right:1px solid var(--line); padding:20px 14px; display:flex; flex-direction:column; gap:2px; }
+    .rail-brand { display:flex; align-items:center; gap:10px; padding:6px 10px 20px; }
+    .rail-brand .dot { width:10px; height:10px; border-radius:50%; background:var(--cyan); box-shadow:0 0 8px var(--cyan); flex:0 0 auto; }
+    .rail-brand div { font:700 .82rem "SFMono-Regular",Consolas,monospace; letter-spacing:.06em; color:#f4fbfc; line-height:1.25; }
+    .rail-brand span { display:block; color:var(--muted); font-size:.62rem; font-weight:600; letter-spacing:.08em; }
+    .rail-item { display:block; padding:9px 10px; border-radius:5px; font:600 .75rem "Avenir Next",Avenir,sans-serif; color:var(--muted); cursor:pointer; text-decoration:none; }
+    .rail-item:hover { color:var(--ink); }
+    .rail-item.active { background:var(--panel-alt); color:#f4fbfc; border:1px solid var(--line); }
+    .rail-item.disabled { color:var(--muted); opacity:.55; cursor:not-allowed; }
+    .rail-item.disabled:hover { color:var(--muted); }
+    .rail-note { margin-top:auto; padding:10px; color:var(--muted); font-size:.66rem; line-height:1.5; border-top:1px solid var(--line); }
+
+    .content { flex:1; min-width:0; }
+    header { background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 1px 0 var(--cyan-dim); }
+    .inner,.grid,.stat-strip,.wide { width:min(1520px,calc(100% - 44px)); margin:auto; }
+    .inner { min-height:96px; display:flex; align-items:center; justify-content:space-between; gap:32px; padding:16px 0; flex-wrap:wrap; }
+    h1 { margin:3px 0; font-size:1.55rem; letter-spacing:.02em; color:#f4fbfc; }
+    .subtitle,.source { color:var(--muted); font-size:.76rem; font-family:"SFMono-Regular",Consolas,monospace; }
+    .live-chip { display:flex; align-items:center; gap:8px; padding:7px 14px; border:1px solid var(--line); border-radius:4px; background:var(--panel-alt); font:700 .64rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.08em; color:var(--green); }
+    .live-chip .dot { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); }
+
+    main { padding:20px 0 48px; }
+    .grid { display:grid; grid-template-columns:340px 1fr; gap:16px; align-items:start; padding-bottom:16px; }
+    .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+    .wide { padding-bottom:16px; }
+
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:8px; overflow:hidden; }
+    .panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:13px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    h2 { margin:2px 0 0; font-size:.94rem; color:#f4fbfc; letter-spacing:.01em; }
+
+    .concept-flag { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid var(--violet); border-radius:3px; color:var(--violet); font:700 .6rem "SFMono-Regular",Consolas,monospace; letter-spacing:.05em; }
+    .concept-banner { display:flex; align-items:center; gap:8px; padding:9px 18px; background:rgba(167,139,250,.08); border-bottom:1px solid var(--line); color:var(--violet); font:700 .66rem "SFMono-Regular",Consolas,monospace; letter-spacing:.04em; }
+
+    .health { display:grid; grid-template-columns:1fr 1fr; }
+    .stat { padding:15px 18px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .stat:nth-child(2n) { border-right:0; }
+    .value { margin-top:6px; font:700 1.1rem "SFMono-Regular",Consolas,monospace; overflow-wrap:anywhere; color:#f4fbfc; }
+    .table-wrap { overflow:auto; }
+    table { width:100%; min-width:480px; border-collapse:collapse; }
+    th,td { padding:10px 16px; text-align:left; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); }
+    td { font:.78rem "SFMono-Regular",Consolas,monospace; font-variant-numeric:tabular-nums; }
+    tbody tr:last-child td { border-bottom:0; }
+    .empty,.warning { padding:16px 18px; }
+    .warning { color:var(--amber); border-left:3px solid var(--amber); }
+
+    .comparison-head { padding:18px; background:var(--panel-alt); color:#fff; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; }
+    .comparison-head .label { color:var(--cyan); }
+    .drf { margin:9px 0 4px; font:700 2rem "SFMono-Regular",Consolas,monospace; color:#f4fbfc; }
+    .rec-chip { text-align:right; }
+    .rec-chip .rec-value { font:700 1.05rem "SFMono-Regular",Consolas,monospace; }
+    .rec-chip .rec-value.edge { color:var(--cyan); }
+    .rec-chip .rec-value.ground { color:var(--amber); }
+    .cost-table { overflow:auto; }
+    .cost-table table { min-width:460px; }
+    .cost-table th,.cost-table td { padding:10px 18px; text-align:right; font:.8rem "SFMono-Regular",Consolas,monospace; font-variant-numeric:tabular-nums; }
+    .cost-table th:first-child,.cost-table td:first-child { text-align:left; font-family:"Avenir Next",Avenir,sans-serif; font-weight:600; color:var(--ink); }
+    .cost-table thead th { font:700 .62rem "SFMono-Regular",Consolas,monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .cost-table tr.total td { font-weight:700; border-top:1px solid var(--cyan-dim); background:var(--panel-alt); color:#f4fbfc; }
+    .cost-table td.dash { color:var(--muted); }
+    .badge { padding:4px 8px; border:1px solid currentColor; border-radius:3px; font:700 .6rem "SFMono-Regular",Consolas,monospace; letter-spacing:.04em; }
+    .badge.simulated { color:var(--red); }
+    .badge.estimated { color:var(--amber); }
+    .badge.measured { color:var(--green); }
+    .badge.concept { color:var(--violet); }
+    .badge-row { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .sensitivity { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-top:1px solid var(--line); }
+    .sensitivity .cell { padding:13px 18px; background:var(--panel); }
+    .sensitivity .cell .label { color:var(--muted); }
+    .sensitivity .cell .metric-value { display:block; margin-top:4px; font:700 .9rem "SFMono-Regular",Consolas,monospace; color:#f4fbfc; }
+    .recommendation { margin:0; padding:15px 18px; border-top:1px solid var(--line); background:var(--panel-alt); line-height:1.5; color:var(--ink); font-size:.86rem; }
+    .assumptions { color:var(--muted); font-size:.74rem; margin-top:7px; display:block; }
+
+    /* fused map (illustrative, static SVG — no real sensor fusion) */
+    .map-wrap { position:relative; background:radial-gradient(ellipse at 30% 20%, #102436 0%, #060a10 70%); min-height:340px; }
+    .map-wrap svg { display:block; width:100%; height:340px; }
+    .map-grid-line { stroke:#17293a; stroke-width:1; }
+    .map-marker { fill:var(--amber); }
+    .map-marker.vessel { fill:var(--red); }
+    .map-label { fill:#8fa6b7; font:600 9px "SFMono-Regular",Consolas,monospace; }
+    .map-legend { position:absolute; bottom:14px; left:14px; background:rgba(10,15,22,.85); border:1px solid var(--line); border-radius:6px; padding:10px 12px; font:600 .64rem "SFMono-Regular",Consolas,monospace; color:var(--muted); }
+    .map-legend span.sw { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+
+    .event-row-flag { color:var(--violet); font-size:.65rem; }
+    .split-2 { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; }
+
+    @media(max-width:1300px) { .grid { grid-template-columns:1fr; } .split-2 { grid-template-columns:1fr; } }
+    @media(max-width:900px) { .shell { flex-direction:column; } .rail { width:100%; flex:none; flex-direction:row; overflow-x:auto; padding:10px 14px; } .rail-brand,.rail-note { display:none; } .rail-item { flex:0 0 auto; white-space:nowrap; } }
+    @media(max-width:760px) { .inner,.grid,.stat-strip,.wide { width:calc(100% - 24px); } .inner { align-items:flex-start; flex-direction:column; } .health { grid-template-columns:1fr; } .stat { border-right:0 !important; } }
+
+    .stat-strip { display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+    .strip-cell { background:var(--panel); padding:13px 16px; }
+    .strip-cell .label { color:var(--muted); display:flex; align-items:center; gap:6px; }
+    .strip-cell .value { margin-top:5px; font-size:1.02rem; }
+    .strip-cell .value.rec-edge { color:var(--cyan); }
+    .strip-cell .value.rec-ground { color:var(--amber); }
+    @media(max-width:1300px) { .stat-strip { grid-template-columns:repeat(3,1fr); } }
+    @media(max-width:760px) { .stat-strip { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail">
+    <div class="rail-brand"><span class="dot"></span><div>ARIES<span>ORBITAL IQ CONCEPT</span></div></div>
+    <a class="rail-item active" href="/dashboard/concept">Mission Control</a>
+    <a class="rail-item" href="/">Dashboard</a>
+    <div class="rail-item disabled" data-noreal="Orbital Nodes">Orbital Nodes</div>
+    <div class="rail-item disabled" data-noreal="Tasking">Tasking</div>
+    <div class="rail-item disabled" data-noreal="Events">Events</div>
+    <a class="rail-item" href="/dashboard/map">Fusion Map</a>
+    <div class="rail-item disabled" data-noreal="Analyst Workspace">Analyst Workspace</div>
+    <div class="rail-item disabled" data-noreal="Customers">Customers</div>
+    <div class="rail-item disabled" data-noreal="Commercial Ops">Commercial Ops</div>
+    <div class="rail-item disabled" data-noreal="Reports">Reports</div>
+    <div class="rail-item disabled" data-noreal="System Health">System Health</div>
+    <div class="rail-item disabled" data-noreal="Settings">Settings</div>
+    <div class="rail-note">Dashboard and Fusion Map are real links. Dimmed items have no real page yet — clicking says so instead of doing nothing.</div>
+    <script>
+      document.querySelectorAll("[data-noreal]").forEach(function (item) {
+        item.addEventListener("click", function () {
+          window.alert('"' + item.getAttribute("data-noreal") + '" has no real page in Aries yet -- only Dashboard and Fusion Map are wired up so far.');
+        });
+      });
+    </script>
+  </nav>
+  <div class="content">
+  <header><div class="inner">
+    <div><p class="kicker">Orbital Edge Benchmark · Concept Layout</p><h1>Aries-01 &middot; IOR Sentinel Node</h1><p class="subtitle">{{ satellite_name }} &middot; NORAD {{ norad_id }} &middot; {{ station_name }} &middot; {{ station_lat }}, {{ station_lon }}</p></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span class="concept-flag">&#9733; Vision layout</span>
+      <div class="live-chip"><span class="dot"></span>Live app data</div>
+    </div>
+  </div></header>
+  <main>
+    {% if database_error %}<p class="warning" role="alert">{{ database_error }}</p>{% endif %}
+    <p style="width:min(1520px,calc(100% - 44px));margin:0 auto 16px;color:var(--muted);font-size:.78rem;line-height:1.5;">This page replicates the layout of a founder-shared product-vision mockup ("Orbital IQ"). Panels marked <span class="badge concept" style="vertical-align:1px;">CONCEPT</span> are illustrative placeholders — no fused sensor feed, vessel-detection model, or customer contracts exist yet (see the roadmap's Stage&nbsp;9 note). Every other panel is wired to the same live data as the real dashboard at <a href="/">/</a>.</p>
+
+    {% if benchmark %}{% set strip_edge = benchmark.runs | rejectattr('target_slug', 'equalto', 'ground-cpu') | first %}{% endif %}
+    <div class="stat-strip">
+      <div class="strip-cell"><div class="label">Observations / Total</div><div class="value">{{ status.observations_total }}</div></div>
+      <div class="strip-cell"><div class="label">Passes Computed</div><div class="value">{{ passes|length }}</div></div>
+      <div class="strip-cell"><div class="label">Data Reduction Factor</div><div class="value">{% if strip_edge %}{{ "%.1f"|format(strip_edge.data_reduction_factor) }}&times;{% else %}n/a{% endif %}</div></div>
+      <div class="strip-cell"><div class="label">Placement Recommendation</div><div class="value {% if benchmark and benchmark.recommendation == 'edge' %}rec-edge{% elif benchmark and benchmark.recommendation == 'ground' %}rec-ground{% endif %}">{% if benchmark and benchmark.recommendation %}{{ benchmark.recommendation|upper }}{% else %}NO CALL{% endif %}</div></div>
+      <div class="strip-cell"><div class="label">Events Delivered <span class="badge concept" style="font-size:.5rem;padding:1px 4px;">CONCEPT</span></div><div class="value">132</div></div>
+      <div class="strip-cell"><div class="label">Downlink Saved <span class="badge concept" style="font-size:.5rem;padding:1px 4px;">CONCEPT</span></div><div class="value">4.82 TB</div></div>
+    </div>
+
+    <div class="grid">
+    <div class="col">
+      <div class="panel"><div class="panel-head"><div><p class="kicker">Mission Health</p><h2>Mission Health</h2></div><span class="source">PostgreSQL</span></div><div class="health"><div class="stat"><div class="label">Obs / 24h</div><div class="value">{{ status.observations_ingested_last_24h }}</div></div><div class="stat"><div class="label">Obs / Total</div><div class="value">{{ status.observations_total }}</div></div><div class="stat" style="grid-column:1/-1"><div class="label">Last Observation Stored</div><div class="value">{{ status.last_successful_ingestion or "No rows ingested" }}</div></div></div></div>
+
+      <div class="panel"><div class="panel-head"><div><p class="kicker">Orbital</p><h2>Upcoming Passes</h2></div><span class="source">Celestrak &middot; Skyfield</span></div>{% if passes_error %}<p class="warning">Pass prediction unavailable: {{ passes_error }}</p>{% elif tle_stale %}<p class="warning">Showing passes from a cached (stale) TLE.</p>{% endif %}{% if passes %}<div class="table-wrap"><table><thead><tr><th>AOS (UTC)</th><th>Max El.</th><th>Dir</th></tr></thead><tbody>{% for p in passes %}<tr><td>{{ p.aos }}</td><td>{{ p.max_elevation_deg }}&deg;</td><td>{{ p.direction }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No upcoming passes computed yet.</p>{% endif %}</div>
+
+      <div class="panel"><div class="panel-head"><div><p class="kicker">Telemetry</p><h2>Recent Observations</h2></div><span class="source">SatNOGS Network API</span></div>{% if observations %}<div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Quality</th><th>Link</th></tr></thead><tbody>{% for o in observations %}<tr><td>{{ o.timestamp }}</td><td>{{ o.signal_quality or "n/a" }}</td><td><a href="{{ o.satnogs_url }}" target="_blank" rel="noopener noreferrer">SatNOGS &#8599;</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No observations ingested yet.</p>{% endif %}</div>
+    </div>
+
+    <div class="col">
+    <div class="panel">
+      <div class="panel-head"><div><p class="kicker">Edge Economics</p><h2>Benchmark Comparison</h2></div><span class="source">{% if benchmark %}{{ benchmark.workload.name }} &middot; same payload &middot; two execution models{% else %}Same payload &middot; two execution models{% endif %}</span></div>
+      {% if benchmark %}
+      {% set edge = benchmark.runs | rejectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+      {% set ground = benchmark.runs | selectattr('target_slug', 'equalto', 'ground-cpu') | first %}
+      {% set timing_measured = 'measured' in edge.result.execution.timing_basis %}
+      {% set electricity = benchmark.assumptions.electricity_inr_per_kwh %}
+      {% set downlink_price = benchmark.assumptions.downlink_inr_per_gb %}
+      {% set ground_energy_inr = ground.energy_joules / 3600000 * electricity %}
+      {% set ground_compute_inr = ground.cost_per_run_inr - ground_energy_inr %}
+      {% set edge_energy_inr = edge.energy_joules / 3600000 * electricity %}
+      {% set edge_hardware_inr = edge.cost_per_run_inr - edge_energy_inr %}
+      {% set ground_downlink_inr = ground.input_bytes / 1000000000 * downlink_price %}
+      {% set edge_downlink_inr = edge.output_bytes / 1000000000 * downlink_price %}
+      {% set downlink_saved_inr = ground_downlink_inr - edge_downlink_inr %}
+      {% set ground_total_inr = ground.cost_per_run_inr + ground_downlink_inr %}
+      {% set edge_total_inr = edge.cost_per_run_inr + edge_downlink_inr %}
+      {% set edge_capex_per_run = benchmark.assumptions.edge_hardware_capex_per_run_inr %}
+      {% set edge_lifetime_days = benchmark.assumptions.edge_hardware_lifetime_hours / 24 %}
+      {% set capex_headroom_inr = ground_total_inr - edge_downlink_inr - edge_energy_inr %}
+      {% if capex_headroom_inr > 0 %}
+      {% set breakeven_runs_per_day = benchmark.assumptions.edge_hardware_capex_inr / capex_headroom_inr / edge_lifetime_days %}
+      {% endif %}
+      <div class="comparison-head">
+        <div><div class="label">{{ benchmark.workload.name }} &middot; Data Reduction Factor</div><div class="drf">{{ "%.2f"|format(edge.data_reduction_factor) }}&times;</div></div>
+        <div class="rec-chip"><div class="label">Recommended</div><div class="rec-value {{ benchmark.recommendation or 'none' }}">{% if benchmark.recommendation == 'edge' %}EDGE{% elif benchmark.recommendation == 'ground' %}GROUND{% else %}NO CALL{% endif %}</div></div>
+      </div>
+      <div class="cost-table">
+        <table>
+          <thead><tr><th>Cost / run</th><th>Ground</th><th>Edge</th></tr></thead>
+          <tbody>
+            <tr><td>Compute (rental)</td><td>&#8377;{{ "%.9f"|format(ground_compute_inr) }}</td><td class="dash">&mdash;</td></tr>
+            <tr><td>Energy</td><td>&#8377;{{ "%.9f"|format(ground_energy_inr) }}</td><td>&#8377;{{ "%.9f"|format(edge_energy_inr) }}</td></tr>
+            <tr><td>Hardware (amortized)</td><td class="dash">&mdash;</td><td>&#8377;{{ "%.9f"|format(edge_hardware_inr) }}</td></tr>
+            <tr><td>Downlink saved vs. ground</td><td class="dash">&mdash;</td><td>&#8377;{{ "%.9f"|format(downlink_saved_inr) }}</td></tr>
+            <tr class="total"><td>Total / insight</td><td>&#8377;{{ "%.9f"|format(ground_total_inr) }}</td><td>&#8377;{{ "%.9f"|format(edge_total_inr) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sensitivity">
+        <div class="cell"><span class="label">Break-even utilization</span><span class="metric-value">{% if breakeven_runs_per_day is defined %}{{ "%.2f"|format(breakeven_runs_per_day) }} runs/day{% else %}already uneconomical{% endif %}</span></div>
+        <div class="cell"><span class="label">Break-even downlink price</span><span class="metric-value">{% if benchmark.break_even_downlink_inr_per_gb is not none %}&#8377;{{ "%.4f"|format(benchmark.break_even_downlink_inr_per_gb) }}/GB{% else %}n/a{% endif %}</span></div>
+        <div class="cell"><span class="label">Confidence</span><span class="metric-value"><span class="badge-row"><span class="badge {{ 'measured' if timing_measured else 'simulated' }}">{{ 'MEASURED' if timing_measured else 'SIMULATED' }} EXEC</span><span class="badge estimated">ESTIMATED HARDWARE</span></span></span></div>
+      </div>
+      {% if benchmark.recommendation %}
+      <p class="recommendation"><strong>{% if benchmark.recommendation == 'edge' %}{{ edge.target_name }} wins{% else %}Ground wins{% endif %}</strong> at the configured &#8377;{{ downlink_price }}/GB downlink price, edge hardware amortized at &#8377;{{ "%.2f"|format(edge_capex_per_run) }}/run.<span class="assumptions">{% if timing_measured %}Edge timing here is measured from a real run, not simulated.{% else %}Edge timing here is simulated (modeled from the ground baseline), not from a real run.{% endif %}</span></p>
+      {% else %}
+      <p class="warning">No placement recommendation: this input produced no positive data reduction.</p>
+      {% endif %}
+      {% else %}
+      <p class="empty">{{ benchmark_error }}</p>
+      {% endif %}
+    </div>
+    </div>
+    </div>
+
+    <div class="wide">
+    <div class="panel">
+      <div class="concept-banner"><span class="badge concept">CONCEPT</span> Fused Intelligence Map &mdash; illustrative only, no real SAR/AIS/EO feed is connected</div>
+      <div class="map-wrap">
+        <svg viewBox="0 0 1200 340" preserveAspectRatio="xMidYMid slice">
+          {% for i in range(1,12) %}<line class="map-grid-line" x1="{{ i*100 }}" y1="0" x2="{{ i*100 }}" y2="340"/>{% endfor %}
+          {% for i in range(1,5) %}<line class="map-grid-line" x1="0" y1="{{ i*68 }}" x2="1200" y2="{{ i*68 }}"/>{% endfor %}
+          <circle class="map-marker vessel" cx="410" cy="150" r="5"/><text class="map-label" x="422" y="147">UNCORRELATED CONTACT</text>
+          <circle class="map-marker" cx="640" cy="210" r="5"/><text class="map-label" x="652" y="207">AIS-MATCHED VESSEL</text>
+          <circle class="map-marker vessel" cx="760" cy="120" r="5"/><text class="map-label" x="772" y="117">DARK VESSEL CANDIDATE</text>
+          <circle class="map-marker" cx="300" cy="250" r="5"/><text class="map-label" x="312" y="247">PORT TRAFFIC CLUSTER</text>
+        </svg>
+        <div class="map-legend"><span class="sw" style="background:var(--red);"></span>Unmatched / dark contact &nbsp; <span class="sw" style="background:var(--amber);"></span>AIS-correlated</div>
+      </div>
+    </div>
+    </div>
+
+    <div class="wide split-2">
+      <div class="panel">
+        <div class="concept-banner"><span class="badge concept">CONCEPT</span> Event Queue &mdash; illustrative rows, no real detection pipeline runs today</div>
+        <div class="table-wrap"><table><thead><tr><th>Event</th><th>Area</th><th>Confidence</th><th>Status</th></tr></thead><tbody>
+          <tr><td>Dark vessel candidate</td><td>Arabian Sea</td><td>87%</td><td><span class="event-row-flag">simulated</span></td></tr>
+          <tr><td>Port activity anomaly</td><td>Gulf Region</td><td>76%</td><td><span class="event-row-flag">simulated</span></td></tr>
+          <tr><td>Potential oil slick</td><td>Offshore Block</td><td>72%</td><td><span class="event-row-flag">simulated</span></td></tr>
+          <tr><td>Infrastructure change</td><td>Border Corridor</td><td>91%</td><td><span class="event-row-flag">simulated</span></td></tr>
+        </tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="concept-banner"><span class="badge concept">CONCEPT</span> Customer Coverage &mdash; no signed customers yet</div>
+        <div class="table-wrap"><table><thead><tr><th>Programme</th><th>Tier</th><th>SLA</th></tr></thead><tbody>
+          <tr><td>Indian Ocean Maritime Watch</td><td>Mission Critical</td><td>99.2%</td></tr>
+          <tr><td>Offshore Asset Sentinel</td><td>Operational</td><td>98.6%</td></tr>
+          <tr><td>Border Change Watch</td><td>Sovereign</td><td>99.1%</td></tr>
+        </tbody></table></div>
+      </div>
+    </div>
+  </main>
+  </div>
+</div>
+</body>
+</html>

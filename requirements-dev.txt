@@ -2,3 +2,6 @@
 pytest==9.1.1
 pytest-mock==3.15.1
 testcontainers[postgres,minio]==4.10.0
+# Offline-only: scripts/train_landcover_classifier.py (not imported by the app)
+onnx==1.22.0
+scikit-learn==1.7.1
