@@ -1,12 +1,14 @@
-import json
 import logging
 import hmac
+import time
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -18,7 +20,6 @@ from sqlalchemy.orm import Session
 from services.api.aries_api import config
 from services.api.aries_api.benchmarks import (
     DEFAULT_WORKLOAD_SLUG,
-    WORKLOAD_REGISTRY,
     BenchmarkNotFoundError,
     BenchmarkUnavailableError,
     DatasetIneligibleError,
@@ -28,7 +29,6 @@ from services.api.aries_api.benchmarks import (
     run_benchmark_pair,
     serialize_pair,
 )
-from services.api.aries_api.dashboard_data import build_workload_matrix
 from services.api.aries_api.db import check_database, get_session
 from services.api.aries_api.ingest import (
     IngestConflictError,
@@ -37,7 +37,7 @@ from services.api.aries_api.ingest import (
     ingest_satnogs_observation,
 )
 from services.api.aries_api.models import Observation
-from services.api.aries_api.overhead import build_snapshot, ground_track_for
+from services.api.aries_api.overhead import build_snapshot
 from services.api.aries_api.predict import compute_passes
 from services.api.aries_api.scheduler import start_scheduler, stop_scheduler
 from services.api.aries_api.sentinel2_ingest import (
@@ -97,7 +97,31 @@ async def lifespan(_: FastAPI):
             stop_scheduler()
 
 
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-IP sliding-window limiter; rejects floods before they reach route handlers."""
+
+    def __init__(self, app, requests_per_minute: int):
+        super().__init__(app)
+        self._limit = requests_per_minute
+        self._window_seconds = 60.0
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        hits = self._hits[client_ip]
+        while hits and now - hits[0] > self._window_seconds:
+            hits.popleft()
+        if len(hits) >= self._limit:
+            return Response(status_code=429, content="Too Many Requests")
+        hits.append(now)
+        return await call_next(request)
+
+
 app = FastAPI(title="Aries Stage 0 Testbed", lifespan=lifespan)
+app.add_middleware(
+    RateLimitMiddleware, requests_per_minute=config.RATE_LIMIT_REQUESTS_PER_MINUTE
+)
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).parent / "static"),
@@ -123,27 +147,6 @@ def health_ready(store: ObjectStore = Depends(get_store)):
         logger.error("readiness_failed dependency=minio")
         raise HTTPException(status_code=503, detail="Service is not ready")
     return {"status": "ready"}
-
-
-def _infra_health(store: ObjectStore) -> dict:
-    """Real backend infrastructure health.
-
-    This is the Aries application stack's own health (Postgres, MinIO) -- not
-    spacecraft bus telemetry. Aries has no flight hardware, so there is no
-    real "processor load" or "thermal state" to report; reporting the
-    infrastructure that actually exists is the honest analogue.
-    """
-    postgres_ok = True
-    try:
-        _bounded_check(check_database)
-    except Exception:
-        postgres_ok = False
-    minio_ok = True
-    try:
-        _bounded_check(store.check)
-    except Exception:
-        minio_ok = False
-    return {"postgres_ok": postgres_ok, "minio_ok": minio_ok}
 
 
 def _passes_payload(count: int) -> dict:
@@ -178,20 +181,6 @@ def api_overhead(offset_minutes: float = Query(default=0.0, ge=-720, le=720)):
         return build_snapshot(moment)
     except TLEUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/api/overhead/track")
-def api_overhead_track(
-    norad_id: int = Query(..., gt=0),
-    minutes: int = Query(default=config.GROUND_TRACK_MINUTES, ge=1, le=720),
-):
-    try:
-        track = ground_track_for(norad_id, minutes=minutes)
-    except TLEUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if not track:
-        raise HTTPException(status_code=404, detail=f"No TLE found for NORAD {norad_id}")
-    return {"norad_id": norad_id, "minutes": minutes, "track": track}
 
 
 @app.get("/api/observations")
@@ -283,23 +272,6 @@ def api_latest_benchmark(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@app.get("/api/benchmarks/matrix")
-def api_benchmark_matrix(session: Session = Depends(get_session)):
-    """Real latest-completed-pair economics for every registered workload.
-
-    Workloads with no completed pair yet are omitted, not padded.
-    """
-    matrix = build_workload_matrix(
-        session,
-        list(WORKLOAD_REGISTRY.keys()),
-        latest_completed_pair,
-        serialize_pair,
-        BenchmarkNotFoundError,
-        BenchmarkUnavailableError,
-    )
-    return {"workloads": matrix, "total_registered": len(WORKLOAD_REGISTRY)}
-
-
 def _dashboard_context(session: Session) -> dict:
     try:
         status = compute_status(session)
@@ -342,70 +314,17 @@ def _dashboard_context(session: Session) -> dict:
 def dashboard(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(request, "dashboard.html", _dashboard_context(session))
 
-def _workload_matrix(session: Session) -> list[dict]:
-    return build_workload_matrix(
-        session,
-        list(WORKLOAD_REGISTRY.keys()),
-        latest_completed_pair,
-        serialize_pair,
-        BenchmarkNotFoundError,
-        BenchmarkUnavailableError,
-    )
-
-
 @app.get("/dashboard/orbital-iq", response_class=HTMLResponse)
-def dashboard_orbital_iq(
-    request: Request,
-    session: Session = Depends(get_session),
-    store: ObjectStore = Depends(get_store),
-):
-    """Orbital IQ 'Mission Control' -- overview page.
+def dashboard_orbital_iq(request: Request, session: Session = Depends(get_session)):
+    """Full-fidelity replication of the Orbital IQ mockup layout.
 
-    Mission health, orbital positions, and the headline edge-economics
-    comparison, all real. Deeper per-workload views live on their own pages:
-    /dashboard/events (run log/detail/economics) and /dashboard/commercial
-    (workload coverage + aggregate economics). Only the map's SAR/AIS
-    sensor-fusion layer has no real analogue and stays badged CONCEPT.
+    The orbital map layer is real SGP4 propagation of live Celestrak TLEs.
+    Panels the mockup shows but Aries has no feed for (SAR/AIS detections,
+    customers, revenue) stay badged CONCEPT.
     """
-    context = _dashboard_context(session)
-    context["workload_matrix"] = _workload_matrix(session)
-    context["infra_health"] = _infra_health(store)
     return templates.TemplateResponse(
-        request, "dashboard_orbital_iq.html", context
+        request, "dashboard_orbital_iq.html", _dashboard_context(session)
     )
-
-
-@app.get("/dashboard/events", response_class=HTMLResponse)
-def dashboard_events(request: Request, session: Session = Depends(get_session)):
-    """Orbital IQ 'Events' page -- real benchmark run log, detail, economics.
-
-    Every registered workload's latest completed pair, real; nothing here is
-    a fabricated detection event.
-    """
-    context = {
-        "satellite_name": config.SATELLITE_NAME, "norad_id": config.NORAD_ID,
-        "station_name": config.STATION_NAME, "station_lat": config.STATION_LAT,
-        "station_lon": config.STATION_LON, "station_elev_m": config.STATION_ELEV_M,
-    }
-    matrix = _workload_matrix(session)
-    context["workload_matrix"] = matrix
-    context["workload_matrix_json"] = json.dumps(matrix).replace("</", "<\\/")
-    return templates.TemplateResponse(request, "dashboard_events.html", context)
-
-
-@app.get("/dashboard/commercial", response_class=HTMLResponse)
-def dashboard_commercial(request: Request, session: Session = Depends(get_session)):
-    """Orbital IQ 'Commercial' page -- real workload coverage + aggregate
-    economics. No customer or revenue data exists, so neither is shown here;
-    see the roadmap's Stage 9 note for why."""
-    context = {
-        "satellite_name": config.SATELLITE_NAME, "norad_id": config.NORAD_ID,
-        "station_name": config.STATION_NAME, "station_lat": config.STATION_LAT,
-        "station_lon": config.STATION_LON, "station_elev_m": config.STATION_ELEV_M,
-    }
-    context["workload_matrix"] = _workload_matrix(session)
-    return templates.TemplateResponse(request, "dashboard_commercial.html", context)
-
 
 @app.get("/dashboard/concept", response_class=HTMLResponse)
 def dashboard_concept(request: Request, session: Session = Depends(get_session)):
@@ -417,19 +336,3 @@ def dashboard_concept(request: Request, session: Session = Depends(get_session))
     DATA -- not measured, not a real customer, not a real detection.
     """
     return templates.TemplateResponse(request, "dashboard_concept.html", _dashboard_context(session))
-
-
-@app.get("/dashboard/map", response_class=HTMLResponse)
-def dashboard_map(request: Request):
-    """Dedicated, full-page orbital map.
-
-    Deliberately has no database dependency -- every satellite position it
-    draws comes from live Celestrak TLEs propagated with real SGP4 (Skyfield),
-    not from Postgres, so this page keeps working even if the database is
-    down. SAR/AIS layers have no real feed and refuse to switch on.
-    """
-    return templates.TemplateResponse(request, "dashboard_map.html", {
-        "satellite_name": config.SATELLITE_NAME, "norad_id": config.NORAD_ID,
-        "station_name": config.STATION_NAME, "station_lat": config.STATION_LAT,
-        "station_lon": config.STATION_LON, "station_elev_m": config.STATION_ELEV_M,
-    })

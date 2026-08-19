@@ -92,6 +92,9 @@ SCHEDULER_ENABLED = _bool_env("SCHEDULER_ENABLED", True)
 READINESS_TIMEOUT_SECONDS = _validate_positive(
     "READINESS_TIMEOUT_SECONDS", _int_env("READINESS_TIMEOUT_SECONDS", 2)
 )
+RATE_LIMIT_REQUESTS_PER_MINUTE = _validate_positive(
+    "RATE_LIMIT_REQUESTS_PER_MINUTE", _int_env("RATE_LIMIT_REQUESTS_PER_MINUTE", 120)
+)
 
 DATABASE_URL = _required_env("DATABASE_URL")
 if not DATABASE_URL.startswith("postgresql+psycopg://"):
